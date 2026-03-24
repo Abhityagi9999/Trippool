@@ -3,17 +3,62 @@ app.py – Main Flask application for TripPool AI
 Serves both the frontend templates and the REST API.
 """
 
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from flask_cors import CORS
+from datetime import timedelta
 import models
 from utils.settlement import compute_settlements, compute_pool_coordinator
 from utils.ai_parser import parse_expense_text
 
 app = Flask(__name__)
+app.secret_key = "trip_pool_super_secret_key"
+app.permanent_session_lifetime = timedelta(days=365)
 CORS(app)
 
 # Initialise the database on first run
 models.init_db()
+
+
+# ═══════════════════════════════════════════════════
+#  AUTH ROUTES
+# ═══════════════════════════════════════════════════
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        data = request.get_json()
+        username = data.get("username", "").strip()
+        password = data.get("password", "")
+        if not username or not password:
+            return jsonify({"error": "Name and password required"}), 400
+            
+        uid, err = models.auth_user(username, password)
+        if err:
+            return jsonify({"error": err}), 401
+            
+        session.permanent = True
+        session["user_id"] = uid
+        session["username"] = username
+        return jsonify({"ok": True}), 200
+    return render_template("login.html")
+
+@app.route("/register", methods=["POST"])
+def register():
+    data = request.get_json()
+    username = data.get("username", "").strip()
+    if not username:
+        return jsonify({"error": "Name is required"}), 400
+        
+    uid, gen_pass = models.register_user(username)
+    session.permanent = True
+    session["user_id"] = uid
+    session["username"] = username
+    return jsonify({"ok": True, "password": gen_pass}), 200
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 # ═══════════════════════════════════════════════════
@@ -23,7 +68,9 @@ models.init_db()
 @app.route("/")
 def home():
     """Landing page – list of trips."""
-    return render_template("index.html")
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    return render_template("index.html", username=session.get("username"))
 
 
 @app.route("/trip/<int:trip_id>")
@@ -42,18 +89,25 @@ def trip_page(trip_id):
 @app.route("/api/trips", methods=["GET"])
 def api_get_trips():
     """Return all trips."""
-    return jsonify(models.get_all_trips())
+    uid = session.get("user_id")
+    if not uid:
+        return jsonify([]), 401
+    return jsonify(models.get_all_trips(uid))
 
 
 @app.route("/api/trips", methods=["POST"])
 def api_create_trip():
     """Create a new trip. Body: {name, members: [{name, contribution}]}"""
+    uid = session.get("user_id")
+    if not uid:
+        return jsonify({"error": "Unauthorized"}), 401
+
     data = request.get_json()
     name = data.get("name", "").strip()
     if not name:
         return jsonify({"error": "Trip name is required"}), 400
 
-    trip_id = models.create_trip(name)
+    trip_id = models.create_trip(name, owner_id=uid)
 
     # Add members if provided
     members = data.get("members", [])
@@ -272,7 +326,13 @@ def api_parse_trip_creation():
 def api_seed():
     """Insert sample Nainital trip data for demo purposes."""
     # Create trip
-    trip_id = models.create_trip("Nainital Trip 🏔️")
+    uid = session.get("user_id")
+    if not uid:
+        uid, _ = models.auth_user("DemoUser", "demo123")
+        session["user_id"] = uid
+        session["username"] = "DemoUser"
+
+    trip_id = models.create_trip("Nainital Trip 🏔️", owner_id=uid)
 
     # Add members with initial contributions
     m1 = models.add_member(trip_id, "Kashish", 1000)

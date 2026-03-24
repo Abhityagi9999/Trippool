@@ -6,6 +6,7 @@ Uses raw SQLite for simplicity and zero external deps.
 import sqlite3
 import os
 from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "trippool.db")
 
@@ -24,10 +25,18 @@ def init_db():
     cur = conn.cursor()
 
     cur.executescript("""
+    CREATE TABLE IF NOT EXISTS users (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        username    TEXT    NOT NULL UNIQUE,
+        created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS trips (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner_id    INTEGER,
         name        TEXT    NOT NULL,
-        created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+        created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS members (
@@ -76,36 +85,112 @@ def init_db():
     );
     """)
 
-    # Attempt to add treasurer_id column to handle legacy databases gracefully
+    # Attempt to add columns to handle legacy databases gracefully
     try:
         conn.execute("ALTER TABLE trips ADD COLUMN treasurer_id INTEGER DEFAULT NULL")
     except sqlite3.OperationalError:
         pass # Column already exists
+    try:
+        conn.execute("ALTER TABLE trips ADD COLUMN owner_id INTEGER DEFAULT NULL")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN password TEXT DEFAULT NULL")
+    except sqlite3.OperationalError:
+        pass
+
+    # Remove UNIQUE constraint on users.username if it exists
+    conn.execute("PRAGMA foreign_keys = OFF")
+    table_info = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
+    if table_info and "UNIQUE" in table_info["sql"]:
+        conn.executescript("""
+            CREATE TABLE users_new (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                username    TEXT    NOT NULL,
+                created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+                password    TEXT    DEFAULT NULL
+            );
+            INSERT INTO users_new SELECT id, username, created_at, password FROM users;
+            DROP TABLE users;
+            ALTER TABLE users_new RENAME TO users;
+        """)
+    conn.execute("PRAGMA foreign_keys = ON")
 
     conn.commit()
     conn.close()
 
 
+# ───────────────── User Registration/Login ────────
+
+def auth_user(username, password):
+    """Logs a user in. Returns (user_id, error_msg)."""
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (username,)).fetchall()
+    
+    for row in rows:
+        user_dict = dict(row)
+        if user_dict.get("password") and check_password_hash(user_dict["password"], password):
+            conn.close()
+            return user_dict["id"], None
+            
+        # Legacy fallback if they have no password set in DB
+        elif not user_dict.get("password"):
+            hashed = generate_password_hash(password)
+            conn.execute("UPDATE users SET password = ? WHERE id = ?", (hashed, user_dict["id"]))
+            conn.commit()
+            conn.close()
+            return user_dict["id"], None
+
+    conn.close()
+    return None, "Incorrect name or password"
+
+def register_user(username):
+    """Create entirely new user with an auto-generated password."""
+    import random
+    import string
+    conn = get_db()
+    
+    # Generate random 6 character password
+    chars = string.ascii_letters + string.digits
+    raw_password = ''.join(random.choices(chars, k=6))
+    hashed = generate_password_hash(raw_password)
+    
+    cur = conn.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, hashed))
+    uid = cur.lastrowid
+    conn.commit()
+    conn.close()
+    
+    return uid, raw_password
+
+def get_user_by_name(username):
+    """Get user by username."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (username,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 # ───────────────── Trip CRUD ─────────────────
 
-def create_trip(name):
+def create_trip(name, owner_id=None):
     """Create a new trip and return its id."""
     conn = get_db()
-    cur = conn.execute("INSERT INTO trips (name) VALUES (?)", (name,))
+    cur = conn.execute("INSERT INTO trips (name, owner_id) VALUES (?, ?)", (name, owner_id))
     trip_id = cur.lastrowid
     conn.commit()
     conn.close()
     return trip_id
 
 
-def get_all_trips():
-    """Return all trips as list of dicts."""
+def get_all_trips(owner_id):
+    """Return all trips for a specific user as list of dicts."""
     conn = get_db()
     rows = conn.execute(
         "SELECT t.*, "
         "(SELECT COUNT(*) FROM members m WHERE m.trip_id = t.id) AS member_count, "
         "(SELECT COALESCE(SUM(e.amount),0) FROM expenses e WHERE e.trip_id = t.id) AS total_expense "
-        "FROM trips t ORDER BY t.created_at DESC"
+        "FROM trips t WHERE t.owner_id = ? ORDER BY t.created_at DESC", (owner_id,)
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]

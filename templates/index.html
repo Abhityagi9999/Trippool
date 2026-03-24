@@ -11,7 +11,14 @@
 <body>
 <div class="topbar">
     <span class="topbar-title">✈️ TripPool AI</span>
-    <button class="btn btn-sm btn-g" id="seedBtn">Try Demo</button>
+    <div style="display:flex; align-items:center; gap:12px">
+        <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.05);padding:4px 10px;border-radius:100px;border:1px solid rgba(255,255,255,0.1)">
+            <span style="font-size:0.8rem">👤</span>
+            <span style="font-size:0.85rem; color:var(--t2); font-weight:600;">{{ username }}</span>
+        </div>
+        <button class="btn btn-sm btn-g" id="seedBtn">Try Demo</button>
+        <a href="/logout" style="text-decoration:none; background:rgba(239, 68, 68, 0.15); border:1px solid rgba(239, 68, 68, 0.3); padding:4px 8px; border-radius:6px; color:#ef4444; font-size:0.8rem; font-weight:600; display:flex; align-items:center" title="Logout">Logout</a>
+    </div>
 </div>
 <div class="container">
     <div class="hero">

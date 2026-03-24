@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Login - TripPool AI</title>
+    <link rel="stylesheet" href="/static/css/index.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
+    <style>
+        body { 
+            background: radial-gradient(circle at 15% 50%, rgba(102,126,234,0.12), transparent 45%),
+                        radial-gradient(circle at 85% 30%, rgba(240,147,251,0.12), transparent 45%),
+                        var(--bg);
+            background-size: 200% 200%;
+            animation: cosmicBg 15s ease infinite alternate;
+        }
+        @keyframes cosmicBg { 0% { background-position: 0% 50%; } 100% { background-position: 100% 50%; } }
+
+        .login-box { 
+            position: relative;
+            max-width: 400px; margin: 8vh auto 40px; 
+            background: rgba(14, 21, 37, 0.45); 
+            backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px);
+            padding: 40px 36px; border-radius: 24px; 
+            border: 1px solid rgba(255,255,255,0.08); 
+            text-align: center; 
+            box-shadow: 0 30px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05); 
+            opacity: 0; transform: translateY(20px);
+            animation: floatUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        }
+        @keyframes floatUp { to { transform: translateY(0); opacity: 1; } }
+
+        .login-logo {
+            width: 68px; height: 68px; margin: 0 auto 20px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 18px; display: flex; align-items: center; justify-content: center;
+            font-size: 2rem; box-shadow: 0 10px 25px rgba(102,126,234,0.4);
+            transform: rotate(-6deg); transition: 0.4s cubic-bezier(0.34,1.56,0.64,1);
+        }
+        .login-box:hover .login-logo { transform: rotate(0deg) scale(1.08); }
+
+        .login-box h1 { margin-top: 0; color: #fff; font-size: 1.8rem; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 8px; }
+        .login-box p { color: var(--t2); font-size: 0.92rem; margin-bottom: 30px; line-height: 1.5; }
+
+        /* Premium Inputs */
+        .fg label { margin-bottom: 6px; font-size: 0.72rem; letter-spacing: 0.05em; color: var(--t2); }
+        .fg input { 
+            background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); 
+            font-size:0.95rem; padding:13px 16px; border-radius: 12px; transition: 0.3s;
+        }
+        .fg input:focus { 
+            background: rgba(255,255,255,0.06); border-color: rgba(129,140,248,0.5); 
+            box-shadow: 0 0 0 4px rgba(129,140,248,0.15); 
+        }
+        
+        .btn-p { 
+            border-radius: 12px; padding: 13px; font-size: 1.05rem; margin-top: 28px; 
+            font-weight: 700; background: linear-gradient(135deg, #667eea, #764ba2); 
+            transition: all 0.3s cubic-bezier(0.2,0.8,0.2,1);
+        }
+        .btn-p:hover { box-shadow: 0 8px 25px rgba(102,126,234,0.5); transform: translateY(-2px); }
+    </style>
+</head>
+<body>
+<div class="topbar">
+    <span class="topbar-title">✈️ TripPool AI</span>
+</div>
+<div class="container">
+    <!-- Saved Accounts Box -->
+    <div class="login-box" style="display:none;" id="savedBox">
+        <div class="login-logo">🚀</div>
+        <h1>Saved Accounts</h1>
+        <p>Tap your account to jump straight to your dashboard.</p>
+        <div id="savedList" style="display:flex; flex-direction:column; gap:12px; margin-bottom: 24px; text-align:left;">
+            <!-- Rendered by JS -->
+        </div>
+        <div style="font-size:0.95rem; color:var(--t2);">
+            <a href="#" style="color:var(--t1); font-weight:600" onclick="toggleMode('login')">Log in to a different account</a>
+        </div>
+    </div>
+
+    <!-- Log In Box -->
+    <div class="login-box" id="loginBox">
+        <div class="login-logo">✈️</div>
+        <h1>Welcome Back</h1>
+        <p>Enter your details to access your dashboard.</p>
+        <div class="fg" style="text-align: left;">
+            <label style="margin-left:2px">Your Name</label>
+            <input type="text" id="username" placeholder="e.g. Alice" autocomplete="off" autofocus onkeydown="if(event.key==='Enter') document.getElementById('password').focus()">
+        </div>
+        <div class="fg" style="text-align: left; margin-top:14px;">
+            <label style="margin-left:2px">Password</label>
+            <input type="password" id="password" placeholder="Enter your password" autocomplete="new-password" onkeydown="if(event.key==='Enter') login()">
+        </div>
+        <button class="btn btn-p btn-block mt-16" onclick="login()" id="lbtn">Log In</button>
+        <div style="margin-top:24px; font-size:0.95rem; color:var(--t2);">
+            New here? <a href="#" style="color:var(--t1); font-weight:600" onclick="toggleMode('reg')">Create an Account</a>
+        </div>
+    </div>
+
+    <!-- Register Box -->
+    <div class="login-box" style="display:none;" id="regBox">
+        <div class="login-logo">✨</div>
+        <h1>New Account</h1>
+        <p>We'll generate a secure, unique password for you so you can securely differentiate your data.</p>
+        <div class="fg" style="text-align: left;">
+            <label style="margin-left:2px">Name to display</label>
+            <input type="text" id="regName" placeholder="e.g. Alice" autocomplete="off" onkeydown="if(event.key==='Enter') register()">
+        </div>
+        <button class="btn btn-p btn-block mt-16" onclick="register()" id="rbtn">Generate Account</button>
+        <div style="margin-top:24px; font-size:0.95rem; color:var(--t2);">
+            Already have an account? <a href="#" style="color:var(--t1); font-weight:600" onclick="toggleMode('login')">Log In</a>
+        </div>
+    </div>
+
+    <!-- Success Box -->
+    <div class="login-box" style="display:none;" id="successBox">
+        <div class="login-logo" style="background: linear-gradient(135deg, #43e97b, #38f9d7);">🎉</div>
+        <h2>Account Created!</h2>
+        <p>Your unique password has been generated. Please save it securely—you will need it next time you log in.</p>
+        <div style="background:var(--bg3); border:1px solid var(--brd); border-radius:var(--r); padding:20px; font-family:monospace; font-size:1.8rem; letter-spacing:4px; margin:24px 0; color:var(--t1);" id="genPassDisplay"></div>
+        <p style="font-size:0.85rem; color:var(--red); font-weight:600; margin-bottom:20px;">🚨 Copy this now. It won't be shown again!</p>
+        <button class="btn btn-p btn-block" onclick="window.location.href='/'">Go to Dashboard →</button>
+    </div>
+</div>
+
+<!-- Custom Auth Modal -->
+<div class="ov hidden" id="authModal" style="align-items:center; z-index:999;">
+    <div class="login-box" style="margin:0; box-shadow:0 30px 60px rgba(0,0,0,0.6);" id="authModalBox">
+        <h2 id="amTitle" style="color:#fff; margin-top:0; font-size:1.5rem; margin-bottom:10px;"></h2>
+        <p id="amText" style="color:var(--t2); font-size:0.95rem; margin-bottom:20px;"></p>
+        <div id="amPassDisplay" style="display:none; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:18px; font-family:monospace; font-size:1.8rem; letter-spacing:4px; margin-bottom:24px; color:var(--t1); font-weight:700;"></div>
+        <div style="display:flex; gap:12px;">
+            <button class="btn btn-g" style="flex:1" onclick="closeAuthModal()" id="amCancel">Cancel</button>
+            <button class="btn btn-p" style="flex:1; margin-top:0;" id="amConfirm">OK</button>
+        </div>
+    </div>
+</div>
+
+<div class="toasts" id="T"></div>
+<script>
+function toast(m,t='ok'){
+    const c=document.getElementById('T'),d=document.createElement('div');d.className='toast '+t;d.textContent=m;
+    c.appendChild(d);setTimeout(()=>d.remove(),3200);
+}
+
+function saveLocal(username, password) {
+    let accounts = JSON.parse(localStorage.getItem('tpAccs') || '[]');
+    accounts = accounts.filter(a => a.username !== username);
+    accounts.unshift({username, password});
+    localStorage.setItem('tpAccs', JSON.stringify(accounts));
+}
+
+function showAuthModal(title, text, pass, confirmText, onConfirm, showCancel, isDanger) {
+    document.getElementById('amTitle').textContent = title;
+    document.getElementById('amText').textContent = text;
+    
+    const passBox = document.getElementById('amPassDisplay');
+    if(pass) {
+        passBox.style.display = 'block';
+        passBox.textContent = pass;
+    } else {
+        passBox.style.display = 'none';
+    }
+    
+    document.getElementById('amCancel').style.display = showCancel ? 'block' : 'none';
+    
+    const confBtn = document.getElementById('amConfirm');
+    confBtn.textContent = confirmText;
+    confBtn.style.background = isDanger ? "linear-gradient(135deg, #fb7185, #e11d48)" : "linear-gradient(135deg, #667eea, #764ba2)";
+    confBtn.style.boxShadow = isDanger ? "0 8px 25px rgba(225,29,72,0.4)" : "";
+    
+    confBtn.onclick = () => {
+        closeAuthModal();
+        if(onConfirm) onConfirm();
+    };
+    
+    document.getElementById('authModal').classList.remove('hidden');
+}
+
+function closeAuthModal() {
+    document.getElementById('authModal').classList.add('hidden');
+}
+
+function delLocal(username, password, e) {
+    if(e) e.stopPropagation();
+    
+    const executeRemoval = () => {
+        let accounts = JSON.parse(localStorage.getItem('tpAccs') || '[]');
+        accounts = accounts.filter(a => a.username !== username);
+        localStorage.setItem('tpAccs', JSON.stringify(accounts));
+        initSaved();
+    };
+
+    if (password) {
+        showAuthModal(
+            "Remove Account?",
+            `Are you sure you want to remove ${username} from this device? Please save your generated password if you plan to log back in later.`,
+            password,
+            "Remove Account",
+            executeRemoval,
+            true, // show cancel
+            true  // is danger
+        );
+    } else {
+        executeRemoval();
+    }
+}
+
+function initSaved() {
+    let accounts = JSON.parse(localStorage.getItem('tpAccs') || '[]');
+    if(accounts.length > 0) {
+        toggleMode('saved');
+        const list = document.getElementById('savedList');
+        list.innerHTML = '';
+        accounts.forEach(acc => {
+            const btn = document.createElement('div');
+            btn.className = 'btn btn-g btn-block';
+            btn.style.padding = '14px 18px';
+            btn.style.justifyContent = 'space-between';
+            btn.style.cursor = 'pointer';
+            btn.onclick = () => autoLogin(acc.username, acc.password, btn);
+            btn.innerHTML = `
+                <div style="display:flex; align-items:center; gap:12px; font-size:1.05rem;">
+                    <span style="font-size:1.4rem;">👤</span> <strong>${acc.username}</strong>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <button title="View Password" onclick="showPass('${acc.password}', event)" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:var(--t2); cursor:pointer; font-size:1rem; padding:4px 8px; transition:0.2s;" onmouseover="this.style.color='var(--t1)'; this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.color='var(--t2)'; this.style.background='rgba(255,255,255,0.05)'">👁️ View</button>
+                    <button title="Remove account" onclick="delLocal('${acc.username}', '${acc.password}', event)" style="background:none; border:none; color:var(--t3); cursor:pointer; font-size:1.3rem; padding:4px 8px; transition:0.2s;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--t3)'">&times;</button>
+                </div>
+            `;
+            list.appendChild(btn);
+        });
+    } else {
+        toggleMode('login');
+    }
+}
+window.onload = initSaved;
+
+function toggleMode(mode) {
+    document.getElementById('loginBox').style.display = mode === 'login' ? 'block' : 'none';
+    document.getElementById('regBox').style.display = mode === 'reg' ? 'block' : 'none';
+    document.getElementById('successBox').style.display = 'none';
+    document.getElementById('savedBox').style.display = mode === 'saved' ? 'block' : 'none';
+    if(mode === 'reg') document.getElementById('regName').focus();
+    else if(mode === 'login') document.getElementById('username').focus();
+}
+
+function showPass(p, e) {
+    if(e) e.stopPropagation();
+    showAuthModal("Account Password", "You can use this auto-generated password to securely log in on other devices.", p, "Done", null, false, false);
+}
+
+async function autoLogin(u, p, btn) {
+    if(btn) btn.style.opacity = '0.7';
+    try {
+        const r = await fetch('/login', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username: u, password: p})
+        });
+        if(r.ok) { saveLocal(u, p); window.location.href = "/"; }
+        else { toast("Saved password invalid.", "err"); delLocal(u, null); }
+    } catch(e) { toast("Network error", "err"); if(btn) btn.style.opacity = '1'; }
+}
+
+async function login() {
+    const val = document.getElementById('username').value.trim();
+    const psw = document.getElementById('password').value.trim();
+    if(!val || !psw) return toast('Please enter name and password', 'err');
+    
+    const btn = document.getElementById('lbtn');
+    btn.textContent = "Logging in..."; btn.disabled = true;
+
+    try {
+        const r = await fetch('/login', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username: val, password: psw})
+        });
+        if(r.ok) { saveLocal(val, psw); window.location.href = "/"; }
+        else { 
+            const d = await r.json(); toast(d.error || "Error logging in", "err");
+            btn.textContent = "Log In"; btn.disabled = false;
+        }
+    } catch(e) { toast("Network error", "err"); btn.textContent = "Log In"; btn.disabled = false; }
+}
+
+async function register() {
+    const val = document.getElementById('regName').value.trim();
+    if(!val) return toast('Please enter your name', 'err');
+    
+    const btn = document.getElementById('rbtn');
+    btn.textContent = "Generating..."; btn.disabled = true;
+
+    try {
+        const r = await fetch('/register', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username: val})
+        });
+        const d = await r.json();
+        if(r.ok) { 
+            saveLocal(val, d.password);
+            document.getElementById('regBox').style.display = 'none';
+            document.getElementById('successBox').style.display = 'block';
+            document.getElementById('genPassDisplay').textContent = d.password;
+        } else { 
+            toast(d.error || "Error registering", "err");
+            btn.textContent = "Generate Account"; btn.disabled = false;
+        }
+    } catch(e) { toast("Network error", "err"); btn.textContent = "Generate Account"; btn.disabled = false; }
+}
+</script>
+</body>
+</html>
