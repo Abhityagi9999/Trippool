@@ -9,6 +9,10 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
 </head>
 <body>
+<script>
+    // Mark session as active so sub-pages don't redirect to /
+    sessionStorage.setItem('tp_app_active', '1');
+</script>
 <div class="topbar">
     <span class="topbar-title">✈️ TripPool AI</span>
         <button onclick="document.getElementById('accMenuModal').classList.remove('hidden')" style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.05);padding:6px 14px;border-radius:100px;border:1px solid rgba(255,255,255,0.1); cursor:pointer; color:var(--t1); transition:0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'">

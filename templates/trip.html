@@ -10,6 +10,12 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
+<script>
+    // Native app cold-start behavior: redirect to dashboard if the browser tab is fresh
+    if (!sessionStorage.getItem('tp_app_active')) {
+        window.location.replace('/');
+    }
+</script>
 <div class="topbar">
     <a href="/" class="topbar-back">← Back</a>
     <span class="topbar-title">{{ trip.name }}</span>
