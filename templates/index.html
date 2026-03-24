@@ -12,12 +12,35 @@
 <div class="topbar">
     <span class="topbar-title">✈️ TripPool AI</span>
     <div style="display:flex; align-items:center; gap:12px">
-        <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.05);padding:4px 10px;border-radius:100px;border:1px solid rgba(255,255,255,0.1)">
-            <span style="font-size:0.8rem">👤</span>
-            <span style="font-size:0.85rem; color:var(--t2); font-weight:600;">{{ username }}</span>
+        <!-- Account Switcher Dropdown -->
+        <div style="position:relative;" id="accountDropdownContainer">
+            <button onclick="document.getElementById('accMenu').classList.toggle('hidden');event.stopPropagation()" style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.05);padding:6px 14px;border-radius:100px;border:1px solid rgba(255,255,255,0.1); cursor:pointer; color:var(--t1);">
+                <span style="font-size:0.8rem">👤</span>
+                <span style="font-size:0.85rem; font-weight:600;">{{ username }}</span>
+                <span style="font-size:0.6rem; color:var(--t3); margin-left:4px;">▼</span>
+            </button>
+            <div id="accMenu" class="hidden" style="position:absolute; top:calc(100% + 10px); right:0; background:rgba(30, 41, 59, 0.95); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,0.1); border-radius:16px; padding:12px; width:260px; box-shadow:0 20px 40px rgba(0,0,0,0.6); z-index:1000;">
+                <div style="padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.08); margin-bottom:8px;">
+                    <div style="font-size:0.75rem; color:var(--t2); font-weight:600; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:6px;">Current Account</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:1rem; color:var(--t1); font-weight:700; display:flex; align-items:center; gap:8px;">
+                            <span style="font-size:1.2rem; filter:drop-shadow(0 0 8px rgba(129,140,248,0.5));">👤</span> {{ username }}
+                        </span>
+                        <button onclick="removeActiveAccount('{{ username }}');document.getElementById('accMenu').classList.add('hidden')" style="background:rgba(239, 68, 68, 0.15); border:1px solid rgba(239, 68, 68, 0.3); border-radius:6px; padding:4px 8px; color:var(--red); font-size:0.75rem; font-weight:600; cursor:pointer;" title="Remove this account from device" onmouseover="this.style.background='rgba(239,68,68,0.25)'" onmouseout="this.style.background='rgba(239,68,68,0.15)'">Remove</button>
+                    </div>
+                </div>
+                
+                <div id="otherAccountsList"></div>
+                
+                <button onclick="window.location.href='/logout'" style="width:100%; text-align:left; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); padding:10px 14px; color:var(--t1); font-weight:500; cursor:pointer; font-size:0.9rem; border-radius:8px; display:flex; align-items:center; gap:10px; transition:0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='rgba(255,255,255,0.03)'">
+                    <span style="font-size:1.1rem;">🚪</span> Add another account
+                </button>
+                <button onclick="window.location.href='/logout'" style="width:100%; text-align:left; background:none; border:none; padding:10px 14px; color:var(--red); font-weight:600; cursor:pointer; font-size:0.9rem; border-radius:8px; margin-top:4px; display:flex; align-items:center; gap:10px; transition:0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.background='none'">
+                    <span style="font-size:1.1rem;">⚡</span> Log Out
+                </button>
+            </div>
         </div>
         <button class="btn btn-sm btn-g" id="seedBtn">Try Demo</button>
-        <a href="/logout" style="text-decoration:none; background:rgba(239, 68, 68, 0.15); border:1px solid rgba(239, 68, 68, 0.3); padding:4px 8px; border-radius:6px; color:#ef4444; font-size:0.8rem; font-weight:600; display:flex; align-items:center" title="Logout">Logout</a>
     </div>
 </div>
 <div class="container">
@@ -57,10 +80,112 @@
         <button class="btn btn-p btn-block mt-16" onclick="create()">Start Trip →</button>
     </div>
 </div>
+<!-- Custom Auth Modal -->
+<div class="ov hidden" id="authModal" style="align-items:center; z-index:9999;">
+    <div style="position:relative; max-width:400px; width:100%; padding:36px; background:rgba(14,21,37,0.85); backdrop-filter:blur(40px); -webkit-backdrop-filter:blur(40px); border:1px solid rgba(255,255,255,0.08); border-radius:24px; box-shadow:0 30px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05); text-align:center;">
+        <h2 id="amTitle" style="color:#fff; margin-top:0; font-size:1.5rem; margin-bottom:10px; font-weight:800; letter-spacing:-0.03em;"></h2>
+        <p id="amText" style="color:var(--t2); font-size:0.95rem; margin-bottom:20px; line-height:1.5;"></p>
+        <div id="amPassDisplay" style="display:none; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:18px; font-family:monospace; font-size:1.8rem; letter-spacing:4px; margin-bottom:24px; color:var(--t1); font-weight:700;"></div>
+        <div style="display:flex; gap:12px;">
+            <button class="btn btn-g" style="flex:1" onclick="closeAuthModal()" id="amCancel">Cancel</button>
+            <button class="btn btn-p" style="flex:1; margin-top:0; padding:12px; font-size:1.05rem;" id="amConfirm">OK</button>
+        </div>
+    </div>
+</div>
+
 <div class="toasts" id="T"></div>
 
 <script>
 const A='';
+document.addEventListener("DOMContentLoaded", () => {
+    const currentUser = "{{ username }}";
+    const accounts = JSON.parse(localStorage.getItem('tpAccs') || '[]');
+    const otherAccounts = accounts.filter(a => a.username !== currentUser);
+    
+    const list = document.getElementById('otherAccountsList');
+    if(list && otherAccounts.length > 0) {
+        let html = '<div style="font-size:0.75rem; color:var(--t2); font-weight:600; text-transform:uppercase; letter-spacing:0.05em; margin:12px 0 6px 2px;">Switch Account</div>';
+        otherAccounts.forEach(acc => {
+            html += `<button onclick="switchAccount('${acc.username}', '${acc.password}');event.stopPropagation()" style="width:100%; text-align:left; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); padding:10px 14px; margin-bottom:6px; color:var(--t2); font-weight:600; cursor:pointer; font-size:0.9rem; border-radius:8px; display:flex; align-items:center; gap:10px; transition:0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.08)'; this.style.color='var(--t1)';" onmouseout="this.style.background='rgba(255,255,255,0.02)'; this.style.color='var(--t2)';">
+                <span style="font-size:1.1rem; filter:grayscale(1);">👤</span> ${acc.username}
+            </button>`;
+        });
+        html += '<div style="height:1px; background:rgba(255,255,255,0.08); margin:12px 0;"></div>';
+        list.innerHTML = html;
+    }
+});
+
+window.addEventListener('click', function(e) {
+    const accDropdown = document.getElementById('accountDropdownContainer');
+    const accMenu = document.getElementById('accMenu');
+    if (accDropdown && accMenu && !accMenu.classList.contains('hidden') && !accDropdown.contains(e.target)) {
+        accMenu.classList.add('hidden');
+    }
+});
+
+async function switchAccount(u, p) {
+    try {
+        const r = await fetch('/login', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username: u, password: p})
+        });
+        if(r.ok) { 
+            let accounts = JSON.parse(localStorage.getItem('tpAccs') || '[]');
+            accounts = accounts.filter(a => a.username !== u);
+            accounts.unshift({username: u, password: p});
+            localStorage.setItem('tpAccs', JSON.stringify(accounts));
+            window.location.href = '/'; 
+        } else { 
+            alert("Saved password invalid. Please log in manually."); 
+            window.location.href = '/logout'; 
+        }
+    } catch(e) { }
+}
+
+function showAuthModal(title, text, pass, confirmText, onConfirm, showCancel, isDanger) {
+    document.getElementById('amTitle').textContent = title;
+    document.getElementById('amText').textContent = text;
+    
+    const passBox = document.getElementById('amPassDisplay');
+    if(pass) {
+        passBox.style.display = 'block'; passBox.textContent = pass;
+    } else {
+        passBox.style.display = 'none';
+    }
+    
+    document.getElementById('amCancel').style.display = showCancel ? 'block' : 'none';
+    
+    const confBtn = document.getElementById('amConfirm');
+    confBtn.textContent = confirmText;
+    confBtn.style.background = isDanger ? "linear-gradient(135deg, #fb7185, #e11d48)" : "linear-gradient(135deg, #667eea, #764ba2)";
+    confBtn.style.boxShadow = isDanger ? "0 8px 25px rgba(225,29,72,0.4)" : "";
+    
+    confBtn.onclick = null;
+    confBtn.onclick = () => { closeAuthModal(); if(onConfirm) onConfirm(); };
+    document.getElementById('authModal').classList.remove('hidden');
+}
+
+function closeAuthModal() { document.getElementById('authModal').classList.add('hidden'); }
+
+function removeActiveAccount(u) {
+    let accounts = JSON.parse(localStorage.getItem('tpAccs') || '[]');
+    let act = accounts.find(a => a.username === u);
+    let p = act ? act.password : "Unknown - Please secure your credentials elsewhere";
+
+    showAuthModal(
+        "Remove Account?",
+        `Are you sure you want to log out and remove ${u} from this device? Please save your generated password if you plan to log back in later.`,
+        p,
+        "Remove Account",
+        () => {
+            accounts = accounts.filter(a => a.username !== u);
+            localStorage.setItem('tpAccs', JSON.stringify(accounts));
+            window.location.href = '/logout';
+        },
+        true, true
+    );
+}
+
 function toast(m,t='ok'){
     const c=document.getElementById('T'),d=document.createElement('div');
     d.className='toast '+t;d.textContent=m;
