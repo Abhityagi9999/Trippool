@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>TripPool AI – Split Expenses Smartly</title>
+    <meta name="description" content="Smart group expense manager for trips. Voice-powered, AI-parsed, zero hassle.">
+    <link rel="stylesheet" href="/static/css/index.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
+</head>
+<body>
+<div class="topbar">
+    <span class="topbar-title">✈️ TripPool AI</span>
+    <button class="btn btn-sm btn-g" id="seedBtn">Try Demo</button>
+</div>
+<div class="container">
+    <div class="hero">
+        <span class="hero-emoji">✈️</span>
+        <h1>TripPool AI</h1>
+        <p>Split trip expenses in seconds.<br>Just speak or type — we handle the math.</p>
+        <button class="btn btn-p btn-block" onclick="openC()">➕ &nbsp;Create New Trip</button>
+    </div>
+    <div class="shdr"><h3>Your Trips</h3></div>
+    <div class="trip-list" id="list"><div class="spin"></div></div>
+</div>
+
+<!-- Create Modal -->
+<div class="ov hidden" id="cModal">
+    <div class="modal">
+        <div class="mhdr">
+            <div style="display:flex;align-items:center;gap:10px">
+                <h2 style="margin:0">🚀 New Trip</h2>
+                <button id="trMic" class="mic-btn" style="position:static;width:34px;height:34px;transform:none" title="Use Voice AI to autofill">🎤</button>
+            </div>
+            <button class="mx" onclick="closeC()">&times;</button>
+        </div>
+        <div id="trAiBox" style="display:none;font-size:0.85rem;background:var(--bg2);padding:10px;border-radius:var(--r);margin-bottom:15px;color:var(--t1);border:1px solid var(--brd)"></div>
+        <div class="fg"><label>Trip Name</label><input id="iName" placeholder="e.g. Goa Trip 🏖️" autofocus></div>
+        <div class="shdr"><h3>Members</h3><button class="btn btn-sm btn-g" onclick="addR()">+ Add</button></div>
+        <div id="rows">
+            <div class="mrow">
+                <div style="flex:1"><label>Member Name</label><input placeholder="e.g. Alice" data-f="n"></div>
+                <div style="width:105px"><label>Put In (₹)</label><input type="number" placeholder="0" data-f="p" value="0"></div>
+            </div>
+            <div class="mrow">
+                <div style="flex:1"><label>Member Name</label><input placeholder="e.g. Bob" data-f="n"></div>
+                <div style="width:105px"><label>Put In (₹)</label><input type="number" placeholder="0" data-f="p" value="0"></div>
+            </div>
+        </div>
+        <button class="btn btn-p btn-block mt-16" onclick="create()">Start Trip →</button>
+    </div>
+</div>
+<div class="toasts" id="T"></div>
+
+<script>
+const A='';
+function toast(m,t='ok'){
+    const c=document.getElementById('T'),d=document.createElement('div');
+    d.className='toast '+t;d.textContent=m;
+    c.appendChild(d);
+    setTimeout(()=>d.remove(),2800);
+}
+
+const f=async(u,o)=> {
+    try {
+        const r=await fetch(A+u,o);
+        if(!r.ok) throw new Error(`HTTP ${r.status}`);
+        return await r.json();
+    } catch(e) {
+        console.error(`[Fetch Error] ${u}:`,e);
+        toast(`Server error: ${e.message}`,'err');
+        throw e;
+    }
+};
+
+async function load(){
+    try{
+        const d=await f('/api/trips'),el=document.getElementById('list');
+        if(!d.length){el.innerHTML='<div class="empty"><div class="empty-i">🗺️</div><div class="empty-t">No trips yet</div><div class="empty-h">Create your first trip or try the demo!</div></div>';return}
+        el.innerHTML=d.map(t=>`<div class="trip-card" style="cursor:pointer" onclick="window.location.href='/trip/${t.id}'"><div class="trip-icon">🏕️</div><div class="trip-info"><div class="trip-nm">${esc(t.name)}</div><div class="trip-mt">${t.member_count} members</div></div><div class="trip-val" style="display:flex;align-items:center;gap:12px">₹${fmt(t.total_expense)} <button class="btn btn-sm" title="Delete Trip" style="padding:4px 8px;font-size:0.8rem;background:rgba(239, 68, 68, 0.2);color:#ef4444;border:none;border-radius:6px;" onclick="deleteTrip(event, ${t.id}, '${esc(t.name).replace(/'/g, "\\'")}')">🗑️</button></div></div>`).join('');
+    }
+    catch(e){document.getElementById('list').innerHTML='<p class="empty-h">Could not load trips</p>'}
+}
+
+function openC(){document.getElementById('cModal').classList.remove('hidden');document.getElementById('iName').focus()}
+function closeC(){document.getElementById('cModal').classList.add('hidden')}
+
+function addR(nameStr = ''){
+    const c=document.getElementById('rows'),d=document.createElement('div');
+    d.className='mrow';
+    d.innerHTML=`<div style="flex:1"><label>Member Name</label><input placeholder="e.g. Charlie" data-f="n" value="${nameStr}"></div><div style="width:105px"><label>Put In (₹)</label><input type="number" placeholder="0" data-f="p" value="0"></div><button class="mrm" title="Remove Member" onclick="this.parentElement.remove()">✕</button>`;
+    c.appendChild(d);
+}
+
+const trMic = document.getElementById('trMic');
+const trAiBox = document.getElementById('trAiBox');
+let trRec = null, isTrRec = false;
+
+if('webkitSpeechRecognition' in window||'SpeechRecognition' in window){
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    trRec=new SR();trRec.lang='en-IN';
+    trRec.onresult=ev=>{
+        const t=ev.results[0][0].transcript;
+        stopTrR();
+        trAiBox.textContent = `Auto-filling...`;
+        parseTripAI(t);
+    };
+    trRec.onend=()=>stopTrR()
+}
+trMic.addEventListener('click',()=>{if(!trRec)return;if(isTrRec){trRec.stop()}else{trRec.start();startTrR()}});
+function startTrR(){isTrRec=true;trMic.classList.add('on');trMic.textContent='⏺';trAiBox.style.display='block';trAiBox.innerHTML='<div class="spin" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px"></div> Listening... Speak now!';}
+function stopTrR(){isTrRec=false;trMic.classList.remove('on');trMic.textContent='🎤';}
+
+async function parseTripAI(text) {
+    try {
+        const r = await fetch('/api/parse-trip', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
+        const d = await r.json();
+        
+        if(d.trip_name && d.trip_name !== "New Trip") document.getElementById('iName').value = d.trip_name;
+        
+        if(d.members && d.members.length > 0) {
+            document.getElementById('rows').innerHTML = '';
+            d.members.forEach(m => addR(m));
+        }
+        
+        trAiBox.textContent = '✨ Auto-filled successfully!';
+        setTimeout(() => trAiBox.style.display='none', 2500);
+    } catch(e) {
+        trAiBox.textContent = 'Failed to parse voice.';
+        setTimeout(() => trAiBox.style.display='none', 2000);
+    }
+}
+
+async function create(){
+    const name=document.getElementById('iName').value.trim();
+    if(!name){toast('Enter a trip name','err');return}
+    const rows=document.querySelectorAll('#rows .mrow'),mem=[];
+    rows.forEach(r=>{const n=r.querySelector('[data-f="n"]').value.trim(),p=parseFloat(r.querySelector('[data-f="p"]').value)||0;if(n)mem.push({name:n,contribution:p})});
+    if(mem.length<2){toast('Add at least 2 members','err');return}
+    try{const d = await f('/api/trips',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,members:mem})});toast('Trip created! 🎉');closeC();window.location.href='/trip/'+d.id}
+    catch(e){ }
+}
+
+document.getElementById('seedBtn').addEventListener('click',async()=>{try{await f('/api/seed',{method:'POST'});toast('Demo loaded! 🏔️');load()}catch(e){ }});
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function fmt(n){return Number(n||0).toLocaleString('en-IN')}
+
+async function deleteTrip(e, id, name) {
+    if(e) { e.preventDefault(); e.stopPropagation(); }
+    if(confirm(`Are you sure you want to delete the trip "${name}"? This action cannot be undone.`)){
+        try {
+            await f(`/api/trips/${id}`, {method: 'DELETE'});
+            toast('Trip deleted! 🗑️');
+            load();
+        } catch(err) {}
+    }
+}
+
+load();
+</script>
+</body>
+</html>
