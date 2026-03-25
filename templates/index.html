@@ -3,13 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>TripPool AI – Split Expenses Smartly</title>
-    <meta name="description" content="Smart group expense manager for trips. Voice-powered, AI-parsed, zero hassle.">
+    <title>TripPool AI – Smart Group Expense Manager</title>
+    <meta name="description" content="Split trip expenses smartly with TripPool AI. Voice-powered, automatic parsing, and a premium mobile experience. Free to use.">
+    <meta name="keywords" content="trip expense manager, split bills, group expenses, travel calculator, PWA">
+    
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="TripPool AI – Split Expenses Smartly">
+    <meta property="og:description" content="The ultimate group expense manager for your next trip.">
+    <meta property="og:image" content="/static/icons/icon-512.png">
+
+    <meta name="theme-color" content="#0d6efd">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
     <link rel="stylesheet" href="/static/css/index.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
 </head>
-<body>
+<body class="pwa-app">
+<!-- Splash Screen -->
+<div id="splash" class="splash-screen">
+    <div class="splash-content">
+        <div class="splash-logo">✈️</div>
+        <h2>TripPool AI</h2>
+        <div class="splash-loader"></div>
+        <p>Loading your trips...</p>
+    </div>
+</div>
+
 <script>
+    // Hide splash screen when page loads
+    window.addEventListener('load', () => {
+        const splash = document.getElementById('splash');
+        setTimeout(() => {
+            splash.style.opacity = '0';
+            setTimeout(() => splash.style.display = 'none', 500);
+        }, 800);
+    });
+
     // Mark session as active so sub-pages don't redirect to /
     sessionStorage.setItem('tp_app_active', '1');
 </script>
@@ -289,6 +321,53 @@ async function deleteTrip(e, id, name) {
 }
 
 load();
+</script>
+<!-- PWA Install Prompt -->
+<div id="pwa-install-banner" class="pwa-banner hidden">
+    <div class="pwa-banner-content">
+        <div class="pwa-banner-text">
+            <strong>Install TripPool AI</strong>
+            <span>Use it like a real app!</span>
+        </div>
+        <button id="pwa-install-btn" class="btn btn-p btn-sm">Install</button>
+        <button id="pwa-close-banner" class="mx" style="position:static;font-size:1.2rem">&times;</button>
+    </div>
+</div>
+
+<script>
+// PWA Logic & Service Worker Registration
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/static/sw.js')
+            .then(reg => console.log('SW registered'))
+            .catch(err => console.log('SW failed', err));
+    });
+}
+
+let deferredPrompt;
+const installBanner = document.getElementById('pwa-install-banner');
+const installBtn = document.getElementById('pwa-install-btn');
+
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    installBanner.classList.remove('hidden');
+});
+
+installBtn.addEventListener('click', async () => {
+    if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+            installBanner.classList.add('hidden');
+        }
+        deferredPrompt = null;
+    }
+});
+
+document.getElementById('pwa-close-banner').addEventListener('click', () => {
+    installBanner.classList.add('hidden');
+});
 </script>
 </body>
 </html>

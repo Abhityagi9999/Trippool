@@ -457,7 +457,121 @@ body::after{width:600px;height:600px;background:#f093fb;bottom:-300px;right:-250
 .hidden{display:none!important}
 .mt-8{margin-top:8px}.mt-12{margin-top:12px}.mt-16{margin-top:16px}
 
-@media(max-width:520px){
-    .container{padding:10px 10px 100px}.stats{gap:8px}.st-v{font-size:1.15rem}
-    .hero h1{font-size:1.7rem}.modal{padding:16px 12px}.sf{padding:14px}
+/* ═══ PWA SPECIFIC ═══ */
+
+/* Prevent overscroll bounce on mobile */
+body.pwa-app {
+    overscroll-behavior-y: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Splash Screen */
+.splash-screen {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: var(--bg);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.5s var(--ease);
+}
+.splash-content {
+    text-align: center;
+    animation: splashPop 0.6s var(--bounce);
+}
+@keyframes splashPop {
+    from { transform: scale(0.8); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+.splash-logo {
+    font-size: 4rem;
+    margin-bottom: 10px;
+    filter: drop-shadow(0 0 20px rgba(129,140,248,0.4));
+}
+.splash-loader {
+    width: 40px;
+    height: 4px;
+    background: var(--glass);
+    border-radius: 2px;
+    margin: 20px auto;
+    position: relative;
+    overflow: hidden;
+}
+.splash-loader::after {
+    content: '';
+    position: absolute;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: var(--gp);
+    animation: loaderPhase 1.5s infinite;
+}
+@keyframes loaderPhase {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+/* PWA Install Banner */
+.pwa-banner {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    right: 20px;
+    background: rgba(15, 23, 42, 0.9);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--brd-a);
+    border-radius: var(--r);
+    padding: 16px;
+    z-index: 1000;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    animation: bannerSlide 0.5s var(--bounce);
+}
+@keyframes bannerSlide {
+    from { transform: translateY(100px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+.pwa-banner-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.pwa-banner-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+.pwa-banner-text strong {
+    font-size: 0.95rem;
+    color: var(--t1);
+}
+.pwa-banner-text span {
+    font-size: 0.75rem;
+    color: var(--t2);
+}
+
+/* App-like Touch Targets */
+.btn, .tab, .smode, .coord-chip, .trip-card {
+    min-height: 48px;
+}
+.input-bar input {
+    min-height: 48px;
+}
+
+/* Button Press Animation */
+.btn:active, .trip-card:active, .tab:active {
+    transform: scale(0.96) !important;
+    transition: transform 0.1s;
+}
+
+/* Fixed Bottom Nav (Placeholder for actual navigation if needed) */
+/* For now, ensuring the input-bar and bottom padding are mobile optimized */
+.container {
+    padding-bottom: 120px; /* Space for bottom bar/input */
+}
+
+@media (max-width: 520px) {
+    .container {
+        padding-bottom: 110px;
+    }
 }

@@ -73,6 +73,12 @@ def home():
     return render_template("index.html", username=session.get("username"))
 
 
+@app.route("/offline")
+def offline():
+    """Offline fallback page."""
+    return render_template("offline.html")
+
+
 @app.route("/trip/<int:trip_id>")
 def trip_page(trip_id):
     """Trip dashboard page."""
@@ -400,4 +406,4 @@ def api_seed():
 
 # ═══════════════════════════════════════════════════
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)

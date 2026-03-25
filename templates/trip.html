@@ -4,13 +4,37 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>{{ trip.name }} – TripPool AI</title>
+    <meta name="theme-color" content="#0d6efd">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
     <link rel="stylesheet" href="/static/css/index.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
-<body>
+<body class="pwa-app">
+<!-- Splash Screen -->
+<div id="splash" class="splash-screen">
+    <div class="splash-content">
+        <div class="splash-logo">🏕️</div>
+        <h2>Trip Details</h2>
+        <div class="splash-loader"></div>
+        <p>Fetching expenses...</p>
+    </div>
+</div>
+
 <script>
+    // Hide splash screen when page loads
+    window.addEventListener('load', () => {
+        const splash = document.getElementById('splash');
+        setTimeout(() => {
+            splash.style.opacity = '0';
+            setTimeout(() => splash.style.display = 'none', 500);
+        }, 800);
+    });
+
     // Native app cold-start behavior: redirect to dashboard if the browser tab is fresh
     if (!sessionStorage.getItem('tp_app_active')) {
         window.location.replace('/');
@@ -147,7 +171,7 @@
 <div class="toasts" id="T"></div>
 
 <script>
-const TID={{trip.id}}, A='';
+const TID = Number("{{ trip.id }}"), A = '';
 let M=[],E=[],B=[],S={},chart=null,csplit=false,coordId=null,aiP=null;
 const AVS=['av-1','av-2','av-3','av-4','av-5'];
 
@@ -694,6 +718,13 @@ function generatePDF() {
 }
 
 init();
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/static/sw.js');
+    });
+}
 </script>
 </body>
 </html>
