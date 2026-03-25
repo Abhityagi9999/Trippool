@@ -3,7 +3,7 @@ app.py – Main Flask application for TripPool AI
 Serves both the frontend templates and the REST API.
 """
 
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_from_directory
 from flask_cors import CORS
 from datetime import timedelta
 import models
@@ -17,6 +17,12 @@ CORS(app)
 
 # Initialise the database on first run
 models.init_db()
+
+@app.route('/robots.txt')
+def robots(): return send_from_directory('static', 'robots.txt')
+
+@app.route('/sitemap.xml')
+def sitemap(): return send_from_directory('static', 'sitemap.xml')
 
 
 # ═══════════════════════════════════════════════════

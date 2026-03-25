@@ -27,7 +27,6 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  // Static assets: Cache First
   if (STATIC_ASSETS.includes(new URL(event.request.url).pathname)) {
     event.respondWith(
       caches.match(event.request).then(response => {
@@ -37,7 +36,6 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // API calls or dynamic pages: Network First, fallback to cache/offline
   event.respondWith(
     fetch(event.request)
       .catch(() => {

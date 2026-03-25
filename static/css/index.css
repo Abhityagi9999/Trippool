@@ -454,7 +454,15 @@ body::after{width:600px;height:600px;background:#f093fb;bottom:-300px;right:-250
 
 ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.07);border-radius:3px}
 
-.hidden{display:none!important}
+/* ═══ PWA BANNER ═══ */
+.pwa-banner { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #1e293b; border: 1px solid var(--brd); border-radius: 16px; padding: 16px; width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 9999; animation: slideUp 0.5s ease; }
+@keyframes slideUp { from { bottom: -100px; opacity: 0; } to { bottom: 20px; opacity: 1; } }
+.pwa-banner-content { display: flex; align-items: center; gap: 15px; }
+.pwa-banner-text { flex: 1; }
+.pwa-banner-text strong { display: block; font-size: 1rem; color: #fff; }
+.pwa-banner-text span { font-size: 0.85rem; color: #94a3b8; }
+.pwa-close-banner { background: none; border: none; color: #64748b; font-size: 1.5rem; cursor: pointer; padding: 0 5px; }
+ .hidden{display:none!important}
 .mt-8{margin-top:8px}.mt-12{margin-top:12px}.mt-16{margin-top:16px}
 
 /* ═══ PWA SPECIFIC ═══ */
