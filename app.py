@@ -33,7 +33,7 @@ def robots(): return send_from_directory('static', 'robots.txt')
 def sitemap(): return send_from_directory('static', 'sitemap.xml')
 
 @app.route('/sw.js')
-def sw(): return send_from_directory('static', 'sw-v16.js', mimetype='application/javascript')
+def sw(): return send_from_directory('static', 'sw-v17.js', mimetype='application/javascript')
 
 @app.route('/manifest.json')
 def manifest(): return send_from_directory('static', 'manifest.json')
