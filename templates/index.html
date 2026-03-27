@@ -18,7 +18,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link rel="manifest" href="/static/manifest.json">
     <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
-    <link rel="stylesheet" href="/static/css/index.css?v=8">
+    <link rel="stylesheet" href="/static/css/index.css?v=9">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
 </head>
 <body class="pwa-app">
@@ -33,12 +33,15 @@
 </div>
 
 <script>
-    // Hide splash screen when page loads
+    // Hide splash screen and ensure all modals are hidden when page loads
     window.addEventListener('load', () => {
         const splash = document.getElementById('splash');
         setTimeout(() => {
             splash.style.opacity = '0';
             setTimeout(() => splash.style.display = 'none', 500);
+            
+            // Critical fix: Ensure all modals are closed on startup
+            document.querySelectorAll('.ov').forEach(el => el.classList.add('hidden'));
         }, 800);
     });
 
@@ -386,7 +389,7 @@ load();
 // PWA Logic & Service Worker Registration
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/static/sw.js?v=8')
+        navigator.serviceWorker.register('/static/sw.js?v=9')
             .then(reg => console.log('SW registered'))
             .catch(err => console.log('SW failed', err));
     });
