@@ -58,8 +58,11 @@ def parse_expense_text(text, member_names):
         patterns = [
             rf"\b{re.escape(name_lower)}\s+paid\b",
             rf"\bpaid\s+by\s+{re.escape(name_lower)}\b",
+            rf"\bpaid\s+{re.escape(name_lower)}\b", # "paid abhi"
             rf"\b{re.escape(name_lower)}\s+ne\s+diya\b",
             rf"\b{re.escape(name_lower)}\s+ne\s+pay\b",
+            rf"\b{re.escape(name_lower)}\s+\d+",   # "Abhi 400"
+            rf"\b{re.escape(name_lower)}\s+spent\b",
         ]
         for pat in patterns:
             if re.search(pat, text_lower):
@@ -68,6 +71,20 @@ def parse_expense_text(text, member_names):
                 break
         if result["paid_by"]:
             break
+
+    # -- 2b. Fallback: If no explicit payer found, search for ANY member name mentioned --
+    if not result["paid_by"]:
+        mentioned_names = []
+        for name_lower, name_orig in names_lower.items():
+            if rf"\b{re.escape(name_lower)}\b" in text_lower or re.search(rf"\b{re.escape(name_lower)}\b", text_lower):
+                mentioned_names.append(name_orig)
+        
+        # If exactly one name is mentioned overall and it's not excluded, assume they paid
+        if len(mentioned_names) == 1:
+            if mentioned_names[0] not in result["excluded"]:
+                result["paid_by"] = mentioned_names[0]
+                result["confidence"] += 0.1
+
 
     # ── 3. Detect exclusions ──
     # Patterns: "X didn't eat", "X excluded", "except X", "without X", "X nahi"
