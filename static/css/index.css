@@ -455,85 +455,20 @@ body::after{width:600px;height:600px;background:#f093fb;bottom:-300px;right:-250
 ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.07);border-radius:3px}
 
 /* ═══ PWA BANNER ═══ */
-.pwa-banner { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #1e293b; border: 1px solid var(--brd); border-radius: 16px; padding: 16px; width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 9999; animation: slideUp 0.5s ease; }
-@keyframes slideUp { from { bottom: -100px; opacity: 0; } to { bottom: 20px; opacity: 1; } }
-.pwa-banner-content { display: flex; align-items: center; gap: 15px; }
-.pwa-banner-text { flex: 1; }
-.pwa-banner-text strong { display: block; font-size: 1rem; color: #fff; }
-.pwa-banner-text span { font-size: 0.85rem; color: #94a3b8; }
-.pwa-close-banner { background: none; border: none; color: #64748b; font-size: 1.5rem; cursor: pointer; padding: 0 5px; }
- .hidden{display:none!important}
-.mt-8{margin-top:8px}.mt-12{margin-top:12px}.mt-16{margin-top:16px}
-
-/* ═══ PWA SPECIFIC ═══ */
-
-/* Prevent overscroll bounce on mobile */
-body.pwa-app {
-    overscroll-behavior-y: none;
-    -webkit-overflow-scrolling: touch;
-}
-
-/* Splash Screen */
-.splash-screen {
-    position: fixed;
-    top: 0; left: 0; width: 100%; height: 100%;
-    background: var(--bg);
-    z-index: 9999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: opacity 0.5s var(--ease);
-}
-.splash-content {
-    text-align: center;
-    animation: splashPop 0.6s var(--bounce);
-}
-@keyframes splashPop {
-    from { transform: scale(0.8); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
-}
-.splash-logo {
-    font-size: 4rem;
-    margin-bottom: 10px;
-    filter: drop-shadow(0 0 20px rgba(129,140,248,0.4));
-}
-.splash-loader {
-    width: 40px;
-    height: 4px;
-    background: var(--glass);
-    border-radius: 2px;
-    margin: 20px auto;
-    position: relative;
-    overflow: hidden;
-}
-.splash-loader::after {
-    content: '';
-    position: absolute;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: var(--gp);
-    animation: loaderPhase 1.5s infinite;
-}
-@keyframes loaderPhase {
-    0% { left: -100%; }
-    100% { left: 100%; }
-}
-
-/* PWA Install Banner */
 .pwa-banner {
     position: fixed;
-    bottom: 20px;
+    bottom: 24px;
     left: 20px;
     right: 20px;
-    background: rgba(15, 23, 42, 0.9);
+    background: rgba(15, 23, 42, 0.94);
     backdrop-filter: blur(20px);
-    border: 1px solid var(--brd-a);
-    border-radius: var(--r);
-    padding: 16px;
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px;
+    padding: 16px 20px;
     z-index: 1000;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-    animation: bannerSlide 0.5s var(--bounce);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    animation: bannerSlide 0.5s var(--bounce) both;
 }
 @keyframes bannerSlide {
     from { transform: translateY(100px); opacity: 0; }
@@ -542,19 +477,19 @@ body.pwa-app {
 .pwa-banner-content {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
 }
 .pwa-banner-text {
     flex: 1;
-    display: flex;
-    flex-direction: column;
 }
 .pwa-banner-text strong {
+    display: block;
     font-size: 0.95rem;
-    color: var(--t1);
+    color: #fff;
+    margin-bottom: 2px;
 }
 .pwa-banner-text span {
-    font-size: 0.75rem;
+    font-size: 0.78rem;
     color: var(--t2);
 }
 
