@@ -1,7 +1,7 @@
 {
-  "name": "TripPool AI",
+  "name": "TripPool",
   "short_name": "TripPool",
-  "description": "Smart group expense manager with AI parsing.",
+  "description": "Smart group expense manager.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",
@@ -9,20 +9,14 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/static/icons/icon-192.png",
+      "src": "/static/icons/logo.jpg",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/jpeg"
     },
     {
-      "src": "/static/icons/icon-512.png",
+      "src": "/static/icons/logo.jpg",
       "sizes": "512x512",
-      "type": "image/png"
-    },
-    {
-      "src": "/static/icons/maskable-icon.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
+      "type": "image/jpeg"
     }
   ]
 }

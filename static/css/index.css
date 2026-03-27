@@ -44,6 +44,10 @@
     --bounce:        cubic-bezier(.34,1.56,.64,1);
 }
 .hidden { display: none !important; }
+.brand-logo{height:24px;width:24px;object-fit:contain;border-radius:4px;vertical-align:middle;image-rendering:-webkit-optimize-contrast;image-rendering:crisp-edges;display:inline-block;margin-right:8px}
+.brand-logo-hero{height:80px;width:80px;border-radius:12px;margin-bottom:15px;box-shadow:0 10px 30px rgba(0,0,0,0.3);image-rendering:-webkit-optimize-contrast}
+.brand-logo-splash{height:60px;width:60px;border-radius:10px;margin-bottom:20px;image-rendering:-webkit-optimize-contrast}
+
 
 
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
