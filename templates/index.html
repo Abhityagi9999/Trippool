@@ -66,7 +66,7 @@
         <button onclick="document.getElementById('accMenuModal').classList.remove('hidden')" style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.05);padding:6px 14px;border-radius:100px;border:1px solid rgba(255,255,255,0.1); cursor:pointer; color:var(--t1); transition:0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'">
             <span style="font-size:0.8rem">👤</span>
             <span style="font-size:0.85rem; font-weight:600;">{{ username }}</span>
-            <span style="font-size:0.6rem; color:var(--t3); margin-left:4px;">v1.10</span>
+            <span style="font-size:0.6rem; color:var(--t3); margin-left:4px;">v1.11</span>
             <span style="font-size:0.6rem; color:var(--t3); margin-left:4px;">▼</span>
         </button>
         <button onclick="window.location.href='/logout'" style="display:flex;align-items:center;gap:6px;background:rgba(239,68,68,0.15);padding:6px 14px;border-radius:100px;border:1px solid rgba(239,68,68,0.3); cursor:pointer; color:#ef4444; font-size:0.85rem; font-weight:600; transition:0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.25)'" onmouseout="this.style.background='rgba(239,68,68,0.15)'" title="Log out to the account selection screen">Log Out</button>
@@ -138,7 +138,7 @@
 </div>
 
 <!-- Custom Auth Modal -->
-<div class="ov hidden" id="authModal" style="align-items:center; z-index:9999;">
+<div class="ov hidden" id="authModal" style="display:none !important; align-items:center; z-index:9999;">
     <div style="position:relative; max-width:400px; width:100%; padding:36px; background:rgba(14,21,37,0.85); backdrop-filter:blur(40px); -webkit-backdrop-filter:blur(40px); border:1px solid rgba(255,255,255,0.08); border-radius:24px; box-shadow:0 30px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05); text-align:center;">
         <h2 id="amTitle" style="color:#fff; margin-top:0; font-size:1.5rem; margin-bottom:10px; font-weight:800; letter-spacing:-0.03em;"></h2>
         <p id="amText" style="color:var(--t2); font-size:0.95rem; margin-bottom:20px; line-height:1.5;"></p>
@@ -225,10 +225,15 @@ function showAuthModal(title, text, pass, confirmText, onConfirm, showCancel, is
     
     confBtn.onclick = null;
     confBtn.onclick = () => { closeAuthModal(); if(onConfirm) onConfirm(); };
+    document.getElementById('authModal').style.display = 'flex';
     document.getElementById('authModal').classList.remove('hidden');
 }
 
-function closeAuthModal() { document.getElementById('authModal').classList.add('hidden'); }
+
+function closeAuthModal() { 
+    document.getElementById('authModal').style.display = 'none';
+    document.getElementById('authModal').classList.add('hidden'); 
+}
 
 function removeActiveAccount(u) {
     let accounts = JSON.parse(localStorage.getItem('tpAccs') || '[]');
@@ -394,8 +399,8 @@ load();
 // PWA Logic & Service Worker Registration
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/static/sw-v10.js?v=10')
-            .then(reg => console.log('SW registered v10'))
+        navigator.serviceWorker.register('/static/sw-v11.js?v=11')
+            .then(reg => console.log('SW registered v11'))
             .catch(err => console.log('SW failed', err));
     });
 }

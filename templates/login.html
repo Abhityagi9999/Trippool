@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Login - TripPool AI</title>
+    <title>Login - TripPool AI (v1.11)</title>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
@@ -134,7 +134,7 @@
 </div>
 
 <!-- Custom Auth Modal -->
-<div class="ov hidden" id="authModal" style="align-items:center; z-index:999;">
+<div class="ov hidden" id="authModal" style="display:none !important; align-items:center; z-index:999;">
     <div class="login-box" style="margin:0; box-shadow:0 30px 60px rgba(0,0,0,0.6);" id="authModalBox">
         <h2 id="amTitle" style="color:#fff; margin-top:0; font-size:1.5rem; margin-bottom:10px;"></h2>
         <p id="amText" style="color:var(--t2); font-size:0.95rem; margin-bottom:20px;"></p>
@@ -190,10 +190,13 @@ function showAuthModal(title, text, pass, confirmText, onConfirm, showCancel, is
         if(onConfirm) onConfirm();
     };
     
+    document.getElementById('authModal').style.display = 'flex';
     document.getElementById('authModal').classList.remove('hidden');
 }
 
+
 function closeAuthModal() {
+    document.getElementById('authModal').style.display = 'none';
     document.getElementById('authModal').classList.add('hidden');
 }
 
@@ -336,9 +339,9 @@ async function register() {
 <script>
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/static/sw-v10.js?v=11')
-            .then(reg => console.log('SW-v10 registered'))
-            .catch(err => console.error('SW-v10 failed', err));
+        navigator.serviceWorker.register('/static/sw-v11.js?v=11')
+            .then(reg => console.log('SW-v11 registered'))
+            .catch(err => console.error('SW-v11 failed', err));
     });
 }
 </script>

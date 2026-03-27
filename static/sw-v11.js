@@ -1,4 +1,4 @@
-const CACHE_NAME = 'trippool-cache-v10';
+const CACHE_NAME = 'trippool-cache-v11';
 const STATIC_ASSETS = [
   '/',
   '/login',
