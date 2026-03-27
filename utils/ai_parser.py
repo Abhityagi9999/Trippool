@@ -12,14 +12,20 @@ Returns a structured dict ready for the expense API.
 """
 import os
 import json
-import google.generativeai as genai
+import re
 from dotenv import load_dotenv
+
+try:
+    import google.generativeai as genai
+    HAS_GENAI = True
+except ImportError:
+    HAS_GENAI = False
 
 load_dotenv()
 
 # Configure Gemini
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
-if GEMINI_KEY:
+if GEMINI_KEY and HAS_GENAI:
     genai.configure(api_key=GEMINI_KEY)
     model = genai.GenerativeModel('gemini-1.5-flash')
 else:
@@ -70,9 +76,8 @@ def parse_expense_text(text, member_names):
 
     # Fallback to Regex
     return _parse_regex(text, member_names)
-
 def _parse_regex(text, member_names):
-    """Original regex parsing logic."""
+    """Original regex parsing logic with extensive Hinglish support."""
     text_lower = text.lower().strip()
     result = {
         "paid_by": None,
@@ -86,9 +91,21 @@ def _parse_regex(text, member_names):
     }
 
     # ── 1. Extract amount ──
-    amount_match = re.search(r"(?:₹?\s*|rs\.?\s*|rupee[s]?\s*)(\d+(?:\.\d{1,2})?)", text_lower)
-    if amount_match:
-        result["amount"] = float(amount_match.group(1))
+    # Pattern 1: Currency then Number ("Rs 1000", "₹500")
+    amt_pat1 = re.search(r"(?:₹|rs\.?|rupee[s]?|rupya)\s*(\d+(?:\.\d{1,2})?)", text_lower)
+    # Pattern 2: Number then Currency ("1000 rs", "500 rupee")
+    amt_pat2 = re.search(r"(\d+(?:\.\d{1,2})?)\s*(?:₹|rs\.?|rupee[s]?|rupya|ki|ka|ke)\b", text_lower)
+    # Pattern 3: Just Number
+    amt_pat3 = re.search(r"\b(\d+(?:\.\d{1,2})?)\b", text_lower)
+
+    if amt_pat1:
+        result["amount"] = float(amt_pat1.group(1))
+    elif amt_pat2:
+        result["amount"] = float(amt_pat2.group(1))
+    elif amt_pat3:
+        result["amount"] = float(amt_pat3.group(1))
+        
+    if result["amount"]:
         result["confidence"] += 0.3
 
     # ── 2. Detect "paid by" ──
@@ -97,9 +114,12 @@ def _parse_regex(text, member_names):
         patterns = [
             rf"\b{re.escape(name_lower)}\s+paid\b",
             rf"\bpaid\s+by\s+{re.escape(name_lower)}\b",
-            rf"\b{re.escape(name_lower)}\s+ne\s+(?:diya|pay|kharch|bhara)\b",
-            rf"\b{re.escape(name_lower)}\s+\d+",
+            # Hinglish: "X ne pay kiya", "X ne bill bhara", "X ne diye", "X ne pay kare", "X ne kharch kre"
+            rf"\b{re.escape(name_lower)}\s+ne\s+(?:diye|pay|kharch|bhara|bhare|diya|pay\s+kiya|kiya|kariya|kare|kre|krye)\b",
+            rf"\b{re.escape(name_lower)}\s+ne\b", # Just "X ne ..."
+            rf"\b{re.escape(name_lower)}\s+\d+",   # "Abhi 400"
             rf"\b{re.escape(name_lower)}\s+spent\b",
+            rf"\bkharch\s+(?:by|kiya|kiye)\s+{re.escape(name_lower)}\b",
         ]
         for pat in patterns:
             if re.search(pat, text_lower):
@@ -112,8 +132,14 @@ def _parse_regex(text, member_names):
     # ── 3. Detect exclusions ──
     for name_lower, name_orig in names_lower.items():
         exclusion_patterns = [
-            rf"\b{re.escape(name_lower)}\s+(?:didn'?t|exclude|nahin|nhi|nahi|mat|without)\b",
+            rf"\b{re.escape(name_lower)}\s+(?:didn'?t|exclude|exclude\s+hai|did\s+not)\b",
             rf"\bexcept\s+{re.escape(name_lower)}\b",
+            rf"\bwithout\s+{re.escape(name_lower)}\b",
+            # Hinglish: "X ne nahi khaya", "X include nahi", "X khana nahi", "X nhi"
+            # Allow optional "ne" and one optional word like "khana" in between
+            rf"\b{re.escape(name_lower)}\s+(?:ne\s+)?(?:\w+\s+)?(?:nahi|nhi|ni|nai|nay)\b",
+            rf"\b{re.escape(name_lower)}\s+ko\s+chho[rd]e?kar\b",
+            rf"\b{re.escape(name_lower)}\s+(?:include\s+)?mat\b",
         ]
         for pat in exclusion_patterns:
             if re.search(pat, text_lower):
@@ -122,18 +148,22 @@ def _parse_regex(text, member_names):
                 result["confidence"] += 0.1
                 break
 
+    # -- 3b. If Payer was accidentally set to someone who is excluded, unset it --
+    if result["paid_by"] in result["excluded"]:
+        result["paid_by"] = None
+
     # ── 5. Detect category ──
     category_map = {
-        "Food": ["food", "eat", "dinner", "lunch", "breakfast", "chai", "tea", "khana", "nashta", "biryani", "pizza", "burger"],
-        "Travel": ["cab", "taxi", "auto", "bus", "train", "flight", "petrol", "fuel", "travel", "ticket", "car", "gaadi"],
-        "Stay": ["hotel", "room", "stay", "hostel", "accommodation"],
-        "Shopping": ["shop", "shopping", "buy", "bought", "gift", "clothes"],
-        "Activity": ["trek", "activity", "rafting", "ticket", "entry"],
-        "Drinks": ["drink", "beer", "wine", "alcohol", "bar", "daaru"],
+        "Food": ["food", "eat", "dinner", "lunch", "breakfast", "chai", "tea", "khana", "nashta", "biryani", "pizza", "burger", "party", "snacks", "maggi", "samosas?", "momo", "restaraunt", "dhaba"],
+        "Travel": ["cab", "taxi", "auto", "bus", "train", "flight", "petrol", "fuel", "travel", "ticket", "car", "gaadi", "toll", "diesel", "parking", "uber", "ola", "rickshaw"],
+        "Stay": ["hotel", "room", "stay", "hostel", "accommodation", "checkin", "checkout", "rent"],
+        "Shopping": ["shop", "shopping", "buy", "bought", "gift", "clothes", "mall", "kharida", "purchase"],
+        "Activity": ["trek", "activity", "rafting", "ticket", "entry", "park", "museum", "adventure", "safari", "boating"],
+        "Drinks": ["drink", "beer", "wine", "alcohol", "bar", "daaru", "sharab", "cold\s*drink", "pepsi", "coke", "sprite", "soda", "pinalia", "peeli"],
     }
     for cat, keywords in category_map.items():
         for kw in keywords:
-            if kw in text_lower:
+            if re.search(rf"\b{kw}\b", text_lower):
                 result["category"] = cat
                 result["confidence"] += 0.1
                 break
@@ -141,14 +171,28 @@ def _parse_regex(text, member_names):
             break
 
     # ── 6. Build title ──
-    title = re.sub(r"₹?\s*\d+(?:\.\d{1,2})?", "", text)
-    result["title"] = title.strip().title()[:30] or result["category"]
+    clean_title = text
+    clean_title = re.sub(r"(?i)(?:₹|rs\.?|rupee[s]?|rupya)\s*\d+(?:\.\d{1,2})?", "", clean_title)
+    clean_title = re.sub(r"(?i)\d+(?:\.\d{1,2})?\s*(?:₹|rs\.?|rupee[s]?|rupya|ki|ka|ke)\b", "", clean_title)
+    clean_title = re.sub(r"\b\d+(?:\.\d{1,2})?\b", "", clean_title)
+    
+    for m in member_names:
+        clean_title = re.sub(rf"(?i)\b{re.escape(m)}\b", "", clean_title)
+    
+    noise = ["paid", "ne", "diye", "kharch", "kiya", "kariya", "bhara", "bhare", "nhi", "nahi", "khaya", "tha", "chhodkar", "mat", "include", "exclude", "except", "without", "kare", "kre", "krye", "jisme", "isne", "usne", "kuch", "bhara", "dia", "diya"]
+    for word in noise:
+        clean_title = re.sub(rf"(?i)\b{word}\b", "", clean_title)
+    
+    clean_title = re.sub(r"\s+", " ", clean_title).strip(" ,.-–—for/\\")
+    
+    result["title"] = clean_title.title()[:30] or result["category"]
 
-    # Confidence boost if we have both amount and payer
+    # Confidence boost
     if result["amount"] and result["paid_by"]:
         result["confidence"] = min(result["confidence"] + 0.2, 1.0)
 
     return result
+
 
 def parse_trip_creation_text(text):
     """
