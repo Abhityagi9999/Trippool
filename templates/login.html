@@ -15,6 +15,7 @@
     <link rel="stylesheet" href="/static/css/index.css?v=9">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
     <style>
+        .hidden { display: none !important; }
         body { 
             background: radial-gradient(circle at 15% 50%, rgba(102,126,234,0.12), transparent 45%),
                         radial-gradient(circle at 85% 30%, rgba(240,147,251,0.12), transparent 45%),
@@ -151,6 +152,12 @@ function toast(m,t='ok'){
     const c=document.getElementById('T'),d=document.createElement('div');d.className='toast '+t;d.textContent=m;
     c.appendChild(d);setTimeout(()=>d.remove(),3200);
 }
+
+// Force-hide modals on startup
+window.addEventListener('load', () => {
+    document.querySelectorAll('.ov').forEach(el => el.classList.add('hidden'));
+});
+
 
 function saveLocal(username, password) {
     let accounts = JSON.parse(localStorage.getItem('tpAccs') || '[]');
@@ -329,7 +336,9 @@ async function register() {
 <script>
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/static/sw.js');
+        navigator.serviceWorker.register('/static/sw-v10.js?v=11')
+            .then(reg => console.log('SW-v10 registered'))
+            .catch(err => console.error('SW-v10 failed', err));
     });
 }
 </script>
