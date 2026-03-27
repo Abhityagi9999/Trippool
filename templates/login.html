@@ -242,6 +242,13 @@ function initSaved() {
 }
 window.onload = initSaved;
 
+// Handle back-forward cache (bfcache)
+window.addEventListener('pageshow', (event) => {
+    if (event.persisted || (window.performance && window.performance.navigation.type === 2)) {
+        initSaved();
+    }
+});
+
 function toggleMode(mode) {
     document.getElementById('loginBox').style.display = mode === 'login' ? 'block' : 'none';
     document.getElementById('regBox').style.display = mode === 'reg' ? 'block' : 'none';

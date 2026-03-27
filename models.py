@@ -9,6 +9,8 @@ from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "trippool.db")
+if os.environ.get('VERCEL'):
+    DB_PATH = "/tmp/trippool.db"
 
 
 def get_db():

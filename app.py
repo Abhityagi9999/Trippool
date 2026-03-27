@@ -11,7 +11,7 @@ from utils.settlement import compute_settlements, compute_pool_coordinator
 from utils.ai_parser import parse_expense_text
 
 app = Flask(__name__)
-app.secret_key = "trip_pool_super_secret_key"
+app.secret_key = "trippool_super_secret_key"
 app.permanent_session_lifetime = timedelta(days=365)
 CORS(app)
 
@@ -23,6 +23,12 @@ def robots(): return send_from_directory('static', 'robots.txt')
 
 @app.route('/sitemap.xml')
 def sitemap(): return send_from_directory('static', 'sitemap.xml')
+
+@app.route('/sw.js')
+def sw(): return send_from_directory('static', 'sw.js', mimetype='application/javascript')
+
+@app.route('/manifest.json')
+def manifest(): return send_from_directory('static', 'manifest.json')
 
 
 # ═══════════════════════════════════════════════════
@@ -74,9 +80,10 @@ def logout():
 @app.route("/")
 def home():
     """Landing page – list of trips."""
-    if "user_id" not in session:
+    uid = session.get("user_id")
+    if not uid:
         return redirect(url_for("login"))
-    return render_template("index.html", username=session.get("username"))
+    return render_template("index.html", username=session.get("username", "User"))
 
 
 @app.route("/offline")

@@ -44,6 +44,15 @@
 
     // Mark session as active so sub-pages don't redirect to /
     sessionStorage.setItem('tp_app_active', '1');
+
+    // Handle back-forward cache (bfcache) - refresh data when navigating back
+    window.addEventListener('pageshow', (event) => {
+        if (event.persisted || (window.performance && window.performance.navigation.type === 2)) {
+            console.log("Page restored from cache. Refreshing data...");
+            initAccounts(); // Refresh account switcher list
+            load();         // Refresh trip list
+        }
+    });
 </script>
 <div class="topbar">
     <span class="topbar-title">✈️ TripPool AI</span>
@@ -146,9 +155,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if(list && otherAccounts.length > 0) {
         let html = '<div style="font-size:0.75rem; color:var(--t2); font-weight:600; text-transform:uppercase; letter-spacing:0.05em; margin:16px 0 10px 4px;">Switch Account</div>';
         otherAccounts.forEach(acc => {
-            html += `<button onclick="switchAccount('${acc.username}', '${acc.password}');event.stopPropagation()" style="width:100%; text-align:left; background:none; border:none; padding:12px 16px; margin-bottom:4px; color:var(--t2); font-weight:600; cursor:pointer; font-size:1.05rem; border-radius:12px; display:flex; align-items:center; gap:12px; transition:0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'; this.style.color='var(--t1)';" onmouseout="this.style.background='none'; this.style.color='var(--t2)';">
-                <span style="font-size:1.3rem; filter:grayscale(1);">👤</span> ${acc.username}
-            </button>`;
+            html += `<div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; background:none; border-radius:12px; transition:0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='none'">
+                <button onclick="switchAccount('${acc.username}', '${acc.password}')" style="flex:1; text-align:left; background:none; border:none; padding:12px 16px; color:var(--t2); font-weight:600; cursor:pointer; font-size:1.05rem; display:flex; align-items:center; gap:12px; transition:0.2s; border-radius:12px 0 0 12px;" onmouseover="this.style.color='var(--t1)'" onmouseout="this.style.color='var(--t2)'">
+                    <span style="font-size:1.3rem; filter:grayscale(1);">👤</span> ${acc.username}
+                </button>
+                <button title="Remove account from device" onclick="removeOtherAccount('${acc.username}', '${acc.password}');event.stopPropagation()" style="background:none; border:none; color:var(--t3); cursor:pointer; font-size:1.3rem; padding:8px 16px; transition:0.2s; border-radius:0 12px 12px 0;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--t3)'">&times;</button>
+            </div>`;
         });
         html += '<div style="height:1px; background:rgba(255,255,255,0.08); margin:16px 0;"></div>';
         list.innerHTML = html;
@@ -168,7 +180,10 @@ async function switchAccount(u, p) {
             localStorage.setItem('tpAccs', JSON.stringify(accounts));
             window.location.href = '/'; 
         } else { 
-            alert("Saved password invalid. Please log in manually."); 
+            let accounts = JSON.parse(localStorage.getItem('tpAccs') || '[]');
+            accounts = accounts.filter(a => a.username !== u);
+            localStorage.setItem('tpAccs', JSON.stringify(accounts));
+            alert("Saved password invalid. Removed from device."); 
             window.location.href = '/logout'; 
         }
     } catch(e) { }
@@ -202,7 +217,7 @@ function closeAuthModal() { document.getElementById('authModal').classList.add('
 function removeActiveAccount(u) {
     let accounts = JSON.parse(localStorage.getItem('tpAccs') || '[]');
     let act = accounts.find(a => a.username === u);
-    let p = act ? act.password : "Unknown - Please secure your credentials elsewhere";
+    let p = act ? act.password : null;
 
     showAuthModal(
         "Remove Account?",
@@ -218,6 +233,22 @@ function removeActiveAccount(u) {
     );
 }
 
+function removeOtherAccount(u, p) {
+    showAuthModal(
+        "Remove Saved Account?",
+        `Are you sure you want to remove ${u} from this device? Make sure you have the password saved elsewhere.`,
+        p,
+        "Remove Saved Account",
+        () => {
+            let accounts = JSON.parse(localStorage.getItem('tpAccs') || '[]');
+            accounts = accounts.filter(a => a.username !== u);
+            localStorage.setItem('tpAccs', JSON.stringify(accounts));
+            window.location.reload();
+        },
+        true, true
+    );
+}
+
 function toast(m,t='ok'){
     const c=document.getElementById('T'),d=document.createElement('div');
     d.className='toast '+t;d.textContent=m;
@@ -228,9 +259,15 @@ function toast(m,t='ok'){
 const f=async(u,o)=> {
     try {
         const r=await fetch(A+u,o);
+        if(r.status === 401) {
+            console.warn("Session expired. Redirecting...");
+            window.location.replace('/logout'); // Use replace to prevent back-loop
+            return new Promise(() => {}); // Never resolve to stop execution
+        }
         if(!r.ok) throw new Error(`HTTP ${r.status}`);
         return await r.json();
     } catch(e) {
+        if (e.message.includes('401')) return new Promise(() => {}); 
         console.error(`[Fetch Error] ${u}:`,e);
         toast(`Server error: ${e.message}`,'err');
         throw e;

@@ -1,10 +1,12 @@
-const CACHE_NAME = 'trippool-cache-v1';
+const CACHE_NAME = 'trippool-cache-v5';
 const STATIC_ASSETS = [
   '/',
+  '/login',
   '/static/css/index.css',
   '/static/manifest.json',
   '/static/icons/icon-192.png',
-  '/static/icons/icon-512.png'
+  '/static/icons/icon-512.png',
+  '/static/icons/maskable-icon.png'
 ];
 
 self.addEventListener('install', event => {
@@ -27,7 +29,25 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  if (STATIC_ASSETS.includes(new URL(event.request.url).pathname)) {
+  const url = new URL(event.request.url);
+  const path = url.pathname;
+
+  // Network-First for core routes
+  if (path === '/' || path === '/login') {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          const resClone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, resClone));
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Cache-First for other static assets
+  if (STATIC_ASSETS.includes(path)) {
     event.respondWith(
       caches.match(event.request).then(response => {
         return response || fetch(event.request);
@@ -36,15 +56,12 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  // Default: Network-Only with Cache fallback
   event.respondWith(
     fetch(event.request)
-      .catch(() => {
-        return caches.match(event.request).then(response => {
-          if (response) return response;
-          if (event.request.mode === 'navigate') {
-            return caches.match('/offline');
-          }
-        });
-      })
+      .catch(() => caches.match(event.request).then(response => {
+        if (response) return response;
+        if (event.request.mode === 'navigate') return caches.match('/offline');
+      }))
   );
 });
