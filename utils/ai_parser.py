@@ -10,28 +10,69 @@ Handles inputs like:
 
 Returns a structured dict ready for the expense API.
 """
+import os
+import json
+import google.generativeai as genai
+from dotenv import load_dotenv
 
-import re
+load_dotenv()
 
+# Configure Gemini
+GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
+if GEMINI_KEY:
+    genai.configure(api_key=GEMINI_KEY)
+    model = genai.GenerativeModel('gemini-1.5-flash')
+else:
+    model = None
 
 def parse_expense_text(text, member_names):
     """
     Parse natural-language expense text and return structured data.
-
-    Args:
-        text: Raw user input string
-        member_names: list of member name strings for this trip
-
-    Returns:
-        dict with keys:
-            paid_by   (str or None)
-            amount    (float or None)
-            title     (str)
-            category  (str)
-            excluded  (list of str)
-            participants (list of str)   – empty means "all"
-            confidence (float 0-1)
+    Uses Gemini AI if available, otherwise falls back to Regex.
     """
+    # Try Gemini 
+    if model:
+        try:
+            prompt = f"""
+            You are an expense parser for 'TripPool AI'. Extract expense details from this text: "{text}"
+            Trip Members: {', '.join(member_names)}
+            
+            Return ONLY a JSON object with these keys:
+            - amount: float (total amount)
+            - paid_by: string (name of the member who paid, must be one of the trip members)
+            - title: string (short description)
+            - category: string (one of: Food, Travel, Stay, Shopping, Activity, Drinks, General)
+            - excluded: list of strings (names of members who EXCEPT/DID NOT participate)
+            - exact_splits: dict (member_name: amount) if specific amounts are mentioned for specific people
+            
+            If a field is missing, use null (or empty list for excluded). 
+            Text might be in English, Hindi, or Hinglish.
+            """
+            
+            response = model.generate_content(prompt)
+            # Find JSON in response
+            json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+            if json_match:
+                ai_res = json.loads(json_match.group(0))
+                
+                # Validation & Format
+                return {
+                    "paid_by": ai_res.get("paid_by"),
+                    "amount": ai_res.get("amount"),
+                    "title": ai_res.get("title", "Expense").title(),
+                    "category": ai_res.get("category", "General"),
+                    "excluded": ai_res.get("excluded", []),
+                    "exact_splits": ai_res.get("exact_splits", {}),
+                    "confidence": 0.95
+                }
+        except Exception as e:
+            print(f"Gemini error: {e}")
+
+    # Fallback to Regex
+    return _parse_regex(text, member_names)
+
+def _parse_regex(text, member_names):
+    """Original regex parsing logic."""
     text_lower = text.lower().strip()
     result = {
         "paid_by": None,
@@ -44,24 +85,20 @@ def parse_expense_text(text, member_names):
         "confidence": 0.0,
     }
 
-    # ── 1. Extract amount (look for numbers, possibly with ₹ prefix) ──
-    amount_match = re.search(r"₹?\s*(\d+(?:\.\d{1,2})?)", text)
+    # ── 1. Extract amount ──
+    amount_match = re.search(r"(?:₹?\s*|rs\.?\s*|rupee[s]?\s*)(\d+(?:\.\d{1,2})?)", text_lower)
     if amount_match:
         result["amount"] = float(amount_match.group(1))
         result["confidence"] += 0.3
 
     # ── 2. Detect "paid by" ──
-    # Patterns: "X paid ...", "paid by X", "X ne diya"
     names_lower = {n.lower(): n for n in member_names}
-
     for name_lower, name_orig in names_lower.items():
         patterns = [
             rf"\b{re.escape(name_lower)}\s+paid\b",
             rf"\bpaid\s+by\s+{re.escape(name_lower)}\b",
-            rf"\bpaid\s+{re.escape(name_lower)}\b", # "paid abhi"
-            rf"\b{re.escape(name_lower)}\s+ne\s+diya\b",
-            rf"\b{re.escape(name_lower)}\s+ne\s+pay\b",
-            rf"\b{re.escape(name_lower)}\s+\d+",   # "Abhi 400"
+            rf"\b{re.escape(name_lower)}\s+ne\s+(?:diya|pay|kharch|bhara)\b",
+            rf"\b{re.escape(name_lower)}\s+\d+",
             rf"\b{re.escape(name_lower)}\s+spent\b",
         ]
         for pat in patterns:
@@ -72,31 +109,11 @@ def parse_expense_text(text, member_names):
         if result["paid_by"]:
             break
 
-    # -- 2b. Fallback: If no explicit payer found, search for ANY member name mentioned --
-    if not result["paid_by"]:
-        mentioned_names = []
-        for name_lower, name_orig in names_lower.items():
-            if rf"\b{re.escape(name_lower)}\b" in text_lower or re.search(rf"\b{re.escape(name_lower)}\b", text_lower):
-                mentioned_names.append(name_orig)
-        
-        # If exactly one name is mentioned overall and it's not excluded, assume they paid
-        if len(mentioned_names) == 1:
-            if mentioned_names[0] not in result["excluded"]:
-                result["paid_by"] = mentioned_names[0]
-                result["confidence"] += 0.1
-
-
     # ── 3. Detect exclusions ──
-    # Patterns: "X didn't eat", "X excluded", "except X", "without X", "X nahi"
     for name_lower, name_orig in names_lower.items():
         exclusion_patterns = [
-            rf"\b{re.escape(name_lower)}\s+didn'?t\b",
-            rf"\b{re.escape(name_lower)}\s+did\s+not\b",
-            rf"\b{re.escape(name_lower)}\s+excluded\b",
+            rf"\b{re.escape(name_lower)}\s+(?:didn'?t|exclude|nahin|nhi|nahi|mat|without)\b",
             rf"\bexcept\s+{re.escape(name_lower)}\b",
-            rf"\bwithout\s+{re.escape(name_lower)}\b",
-            rf"\b{re.escape(name_lower)}\s+nahi\b",
-            rf"\bexclude\s+{re.escape(name_lower)}\b",
         ]
         for pat in exclusion_patterns:
             if re.search(pat, text_lower):
@@ -105,33 +122,15 @@ def parse_expense_text(text, member_names):
                 result["confidence"] += 0.1
                 break
 
-    # ── 4. Detect specific participants ──
-    # Pattern: "split between X, Y, Z" or "among X Y Z"
-    split_match = re.search(
-        r"(?:split|divide|among|between)\s+(.+?)(?:\.|$)", text_lower
-    )
-    if split_match:
-        chunk = split_match.group(1)
-        for name_lower, name_orig in names_lower.items():
-            if name_lower in chunk:
-                if name_orig not in result["participants"]:
-                    result["participants"].append(name_orig)
-
-    # ── 5. Detect category from keywords ──
+    # ── 5. Detect category ──
     category_map = {
-        "Food": ["food", "eat", "dinner", "lunch", "breakfast", "chai", "tea",
-                  "coffee", "snack", "meal", "restaurant", "biryani", "pizza",
-                  "burger", "khana", "nashta"],
-        "Travel": ["cab", "taxi", "auto", "bus", "train", "flight", "uber",
-                    "ola", "petrol", "fuel", "toll", "travel", "ticket", "car", "flight"],
-        "Stay": ["hotel", "room", "stay", "hostel", "airbnb", "lodge",
-                 "accommodation", "rent"],
-        "Shopping": ["shop", "shopping", "buy", "bought", "gift", "souvenir", "buying", "clothes", "shoes"],
-        "Activity": ["trek", "activity", "rafting", "bungee", "paragliding",
-                      "entry", "ticket", "museum", "park"],
-        "Drinks": ["drink", "beer", "wine", "alcohol", "bar", "pub", "daaru"],
+        "Food": ["food", "eat", "dinner", "lunch", "breakfast", "chai", "tea", "khana", "nashta", "biryani", "pizza", "burger"],
+        "Travel": ["cab", "taxi", "auto", "bus", "train", "flight", "petrol", "fuel", "travel", "ticket", "car", "gaadi"],
+        "Stay": ["hotel", "room", "stay", "hostel", "accommodation"],
+        "Shopping": ["shop", "shopping", "buy", "bought", "gift", "clothes"],
+        "Activity": ["trek", "activity", "rafting", "ticket", "entry"],
+        "Drinks": ["drink", "beer", "wine", "alcohol", "bar", "daaru"],
     }
-
     for cat, keywords in category_map.items():
         for kw in keywords:
             if kw in text_lower:
@@ -142,51 +141,8 @@ def parse_expense_text(text, member_names):
             break
 
     # ── 6. Build title ──
-    # Remove the payer phrase, amount, and exclusion phrases to get title
-    title = text
-    # Remove "X paid" / "paid by X"
-    if result["paid_by"]:
-        title = re.sub(
-            rf"(?i)\b{re.escape(result['paid_by'])}\s+paid\b", "", title
-        )
-        title = re.sub(
-            rf"(?i)\bpaid\s+by\s+{re.escape(result['paid_by'])}\b", "", title
-        )
-    # Remove amount
-    title = re.sub(r"₹?\s*\d+(?:\.\d{1,2})?", "", title)
-    # Remove exclusion/split phrases
-    title = re.sub(r"(?i)\b\w+\s+didn'?t\s+\w+", "", title)
-    title = re.sub(r"(?i)\bexcept\s+\w+", "", title)
-    title = re.sub(r"(?i)\bexclude\s+\w+", "", title)
-    
-    # ── 7. Detect Exact Splits ──
-    for name_lower, name_orig in names_lower.items():
-        pat_for = rf"(?:₹?\s*(\d+(?:\.\d{{1,2}})?))\s+for\s+{re.escape(name_lower)}\b"
-        pat_colon = rf"\b{re.escape(name_lower)}\s*:\s*₹?\s*(\d+(?:\.\d{{1,2}})?)"
-        
-        match_for = re.search(pat_for, text_lower)
-        if match_for:
-            result["exact_splits"][name_orig] = float(match_for.group(1))
-            title = re.sub(pat_for, "", title, flags=re.IGNORECASE)
-            continue
-            
-        match_colon = re.search(pat_colon, text_lower)
-        if match_colon:
-            result["exact_splits"][name_orig] = float(match_colon.group(1))
-            title = re.sub(pat_colon, "", title, flags=re.IGNORECASE)
-
-    if result["exact_splits"]:
-        sum_splits = sum(result["exact_splits"].values())
-        if result["amount"] is None or result["amount"] < sum_splits:
-            result["amount"] = sum_splits
-
-    # Clean up
-    title = re.sub(r"\s+", " ", title).strip(" ,.-–—for")
-
-    if not title:
-        title = result["category"] if result["category"] != "General" else "Expense"
-
-    result["title"] = title.title() if title else "Expense"
+    title = re.sub(r"₹?\s*\d+(?:\.\d{1,2})?", "", text)
+    result["title"] = title.strip().title()[:30] or result["category"]
 
     # Confidence boost if we have both amount and payer
     if result["amount"] and result["paid_by"]:
