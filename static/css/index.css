@@ -43,6 +43,8 @@
     --ease:          cubic-bezier(.4,0,.2,1);
     --bounce:        cubic-bezier(.34,1.56,.64,1);
 }
+.hidden { display: none !important; }
+
 
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 html{font-size:16px;scroll-behavior:smooth;-webkit-tap-highlight-color:transparent}

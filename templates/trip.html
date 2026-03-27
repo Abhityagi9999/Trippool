@@ -3,13 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>{{ trip.name }} – TripPool AI</title>
+    <title>{{ trip.name }} – TripPool AI (v1.12)</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+
     <meta name="theme-color" content="#0d6efd">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link rel="manifest" href="/static/manifest.json">
     <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
-    <link rel="stylesheet" href="/static/css/index.css">
+    <link rel="stylesheet" href="/static/css/index.css?v=12">
+    <style>.hidden{display:none !important}</style>
+
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -109,7 +115,8 @@
 </div>
 
 <!-- Expense Modal (Manual Add) -->
-<div class="ov hidden" id="eModal">
+<div class="ov hidden" id="eModal" style="display:none !important">
+
     <div class="modal">
         <div class="mhdr"><h2>✏️ Add Expense</h2><button class="mx" onclick="closeExp()">&times;</button></div>
         <div class="fg"><label>Description</label><input id="eT" placeholder="Dinner, Cab, Ticket..."></div>
@@ -128,7 +135,8 @@
 </div>
 
 <!-- Expense Details Modal (View) -->
-<div class="ov hidden" id="vModal">
+<div class="ov hidden" id="vModal" style="display:none !important">
+
     <div class="modal">
         <div class="mhdr">
             <div>
@@ -154,7 +162,8 @@
 </div>
 
 <!-- Member History Modal -->
-<div class="ov hidden" id="hModal">
+<div class="ov hidden" id="hModal" style="display:none !important">
+
     <div class="modal" style="max-height:85vh;display:flex;flex-direction:column">
         <div class="mhdr" style="flex-shrink:0">
             <div>
@@ -344,9 +353,13 @@ function viewExp(id){
         spHtml += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--brd);font-size:0.85rem"><div style="display:flex;align-items:center;gap:6px">${esc(s.member_name)} ${s.is_participant?'':'<span class="badge badge-x" style="font-size:0.55rem;padding:2px 5px">Excluded</span>'}</div><div style="font-weight:600;color:${amt>0?'var(--t1)':'var(--t3)'}">₹${fmt(amt)}</div></div>`;
     });
     document.getElementById('vSp').innerHTML = spHtml;
+    document.getElementById('vModal').style.display = 'flex';
     document.getElementById('vModal').classList.remove('hidden');
 }
-function closeV(){document.getElementById('vModal').classList.add('hidden')}
+function closeV(){
+    document.getElementById('vModal').style.display = 'none';
+    document.getElementById('vModal').classList.add('hidden');
+}
 
 function showMemberHistory(member_id) {
     const m = M.find(x => x.id === member_id);
@@ -367,9 +380,13 @@ function showMemberHistory(member_id) {
         el.innerHTML=mExp.map(e=>`<div class="ti" style="cursor:pointer;background:var(--bg2)" onmouseover="this.style.background='var(--glh)'" onmouseout="this.style.background='var(--bg2)'" onclick="closeH();viewExp(${e.id})"><div class="ti-top"><div class="ti-name">${ce(e.category)} ${esc(e.category)}</div><div class="ti-amt">₹${fmt(e.amount)}</div></div><div class="ti-bot"><span class="badge badge-c" style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom" title="${esc(e.title)}">${esc(e.title)}</span> ${e.type==='pool_expense'?'<span class="badge badge-c">Pool</span>':''} <span style="margin-left:auto;font-size:0.65rem;opacity:0.6;font-weight:600">${fmtTime(e.created_at)}</span></div></div>`).join('');
     }
     
+    document.getElementById('hModal').style.display = 'flex';
     document.getElementById('hModal').classList.remove('hidden');
 }
-function closeH() { document.getElementById('hModal').classList.add('hidden'); }
+function closeH() { 
+    document.getElementById('hModal').style.display = 'none';
+    document.getElementById('hModal').classList.add('hidden'); 
+}
 
 function ce(c){return{Food:'🍔',Travel:'✈️',Stay:'🏨',Shopping:'🛍️',Drinks:'🍹'}[c]||'📎'}
 
@@ -449,11 +466,15 @@ async function renderCoordResult(id) {
 }
 
 function openExp(){
+    document.getElementById('eModal').style.display = 'flex';
     document.getElementById('eModal').classList.remove('hidden');csplit=false;
     document.getElementById('eP').innerHTML=M.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join('');
     rSp();
 }
-function closeExp(){document.getElementById('eModal').classList.add('hidden')}
+function closeExp(){
+    document.getElementById('eModal').style.display = 'none';
+    document.getElementById('eModal').classList.add('hidden');
+}
 function rSp(){
     document.getElementById('sp').innerHTML = M.map(m=>`
         <div class="srow">
@@ -722,7 +743,9 @@ init();
 <script>
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/static/sw.js');
+        navigator.serviceWorker.register('/sw.js?v=12')
+            .then(reg => console.log('SW (trip) registered v12'))
+            .catch(err => console.error('SW (trip) failed', err));
     });
 }
 </script>
