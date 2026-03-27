@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>{{ trip.name }} – TripPool (v1.14)</title>
+    <title>{{ trip.name }} – Trippool (v1.15)</title>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
@@ -13,7 +13,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link rel="manifest" href="/static/manifest.json">
     <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
-    <link rel="stylesheet" href="/static/css/index.css?v=14">
+    <link rel="stylesheet" href="/static/css/index.css?v=15">
     <style>.hidden{display:none !important}</style>
 
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
@@ -24,7 +24,7 @@
 <!-- Splash Screen -->
 <div id="splash" class="splash-screen">
     <div class="splash-content">
-        <img src="/static/icons/logo.jpg" class="brand-logo-splash">
+        <img src="/static/icons/logo.png" class="brand-logo-splash">
         <h2>Trip Details</h2>
         <div class="splash-loader"></div>
         <p>Fetching expenses...</p>
@@ -48,7 +48,7 @@
 </script>
 <div class="topbar">
     <a href="/" class="topbar-back">← Back</a>
-    <span class="topbar-title" onclick="window.location.href='/'" style="cursor:pointer"><img src="/static/icons/logo.jpg" class="brand-logo">TripPool</span>
+    <span class="topbar-title" onclick="window.location.href='/'" style="cursor:pointer"><img src="/static/icons/logo.png" class="brand-logo">Trippool</span>
     <span style="width:40px"></span>
 </div>
 
@@ -743,8 +743,8 @@ init();
 <script>
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=14')
-            .then(reg => console.log('SW (trip) registered v14'))
+        navigator.serviceWorker.register('/sw.js?v=15')
+            .then(reg => console.log('SW (trip) registered v15'))
             .catch(err => console.error('SW (trip) failed', err));
     });
 }

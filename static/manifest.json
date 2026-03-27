@@ -1,6 +1,6 @@
 {
-  "name": "TripPool",
-  "short_name": "TripPool",
+  "name": "Trippool",
+  "short_name": "Trippool",
   "description": "Smart group expense manager.",
   "start_url": "/",
   "display": "standalone",
@@ -9,14 +9,14 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/static/icons/logo.jpg",
+      "src": "/static/icons/logo.png",
       "sizes": "192x192",
-      "type": "image/jpeg"
+      "type": "image/png"
     },
     {
-      "src": "/static/icons/logo.jpg",
+      "src": "/static/icons/logo.png",
       "sizes": "512x512",
-      "type": "image/jpeg"
+      "type": "image/png"
     }
   ]
 }
