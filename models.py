@@ -29,8 +29,9 @@ def init_db():
     cur.executescript("""
     CREATE TABLE IF NOT EXISTS users (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        username    TEXT    NOT NULL UNIQUE,
-        created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+        username    TEXT    NOT NULL, -- No UNIQUE here to allow the manual migration below if needed, but we'll include password
+        created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+        password    TEXT    DEFAULT NULL
     );
 
     CREATE TABLE IF NOT EXISTS trips (
@@ -97,26 +98,11 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
+    # Legacy fallback: Ensure password column exists if not present
     try:
         conn.execute("ALTER TABLE users ADD COLUMN password TEXT DEFAULT NULL")
     except sqlite3.OperationalError:
         pass
-
-    # Remove UNIQUE constraint on users.username if it exists
-    conn.execute("PRAGMA foreign_keys = OFF")
-    table_info = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
-    if table_info and "UNIQUE" in table_info["sql"]:
-        conn.executescript("""
-            CREATE TABLE users_new (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                username    TEXT    NOT NULL,
-                created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-                password    TEXT    DEFAULT NULL
-            );
-            INSERT INTO users_new SELECT id, username, created_at, password FROM users;
-            DROP TABLE users;
-            ALTER TABLE users_new RENAME TO users;
-        """)
     conn.execute("PRAGMA foreign_keys = ON")
 
     conn.commit()
