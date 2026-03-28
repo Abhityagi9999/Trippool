@@ -265,15 +265,20 @@ def api_get_balances(trip_id):
 
 @app.route("/api/trips/<int:trip_id>/settlement", methods=["GET"])
 def api_get_settlement(trip_id):
+    """Return optimised settlement transactions."""
     trip = models.get_trip(trip_id)
+    if not trip:
+        return jsonify({"error": "Trip not found"}), 404
+        
     balances = models.get_balances(trip_id)
     settlements = compute_settlements(balances, treasurer_id=trip.get("treasurer_id"))
     return jsonify(settlements)
-
-
 @app.route("/api/trips/<int:trip_id>/settlement/coordinator/<int:coordinator_id>", methods=["GET"])
 def api_get_coordinator_settlement(trip_id, coordinator_id):
     """Return pool-coordinator settlement (one person handles all money)."""
+    trip = models.get_trip(trip_id)
+    if not trip:
+        return jsonify({"error": "Trip not found"}), 404
     balances = models.get_balances(trip_id)
     result = compute_pool_coordinator(balances, coordinator_id)
     return jsonify(result)
