@@ -398,18 +398,22 @@ def get_balances(trip_id):
         ).fetchone()
         total_consumed = consumed_row["total"]
 
+        # Everyone gets full credit for their own contribution and what they paid out-of-pocket
+        # for expenses (even if treasurer).
+        net = contribution + raw_paid - total_consumed
+        display_paid = raw_paid
+
+        # If this is the treasurer, we can also calculate total trip cash they hold for the UI
+        # Total Initial Pool - Total spent by treasurer from the pool
+        # This is for display purposes ONLY, it doesn't affect their personal 'net' balance.
+        cash_held = 0
         if mid == treasurer_id:
-            # Treasurer handles the common pool. 
-            # Their "total_paid" for balance purposes is only what they spent BEYOND the pool.
-            # If they spent less than the pool, they still owe the remainder of the pool to the trip.
-            net_paid = raw_paid - pool_collected
-            net = contribution + net_paid - total_consumed
-            # For display purposes in the "Put In" section, we show their net out-of-pocket extra.
-            display_paid = max(0, net_paid)
-        else:
-            # Non-treasurers always get full credit for what they paid.
-            net = contribution + raw_paid - total_consumed
-            display_paid = raw_paid
+            pool_spent = conn.execute(
+                "SELECT COALESCE(SUM(amount), 0) FROM expenses "
+                "WHERE trip_id = ? AND paid_by = ? AND type = 'pool_expense'",
+                (trip_id, mid)
+            ).fetchone()[0]
+            cash_held = pool_collected - pool_spent
 
         net = round(net, 2)
 
@@ -420,6 +424,7 @@ def get_balances(trip_id):
             "total_paid": display_paid, # This goes to "₹X Paid" in UI
             "total_consumed": total_consumed,
             "net_balance": net,
+            "cash_on_hand": cash_held,
         }
 
     conn.close()

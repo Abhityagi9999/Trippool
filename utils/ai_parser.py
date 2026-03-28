@@ -31,7 +31,7 @@ if GEMINI_KEY and HAS_GENAI:
 else:
     model = None
 
-def parse_expense_text(text, member_names):
+def parse_expense_text(text, member_names, current_user=None):
     """
     Parse natural-language expense text and return structured data.
     Uses Gemini AI if available, otherwise falls back to Regex.
@@ -40,19 +40,31 @@ def parse_expense_text(text, member_names):
     if model:
         try:
             prompt = f"""
-            You are an expense parser for 'TripPool AI'. Extract expense details from this text: "{text}"
+            You are an expert expense parser for 'TripPool AI'. 
+            The input comes from a microphone and may contain phonetic errors or natural speech disfluencies.
+            
+            Input Text: "{text}"
             Trip Members: {', '.join(member_names)}
+            Speaker (Me/I/Maine): {current_user or 'Unknown'}
             
-            Return ONLY a JSON object with these keys:
-            - amount: float (total amount)
-            - paid_by: string (name of the member who paid, must be one of the trip members)
-            - title: string (short description)
-            - category: string (one of: Food, Travel, Stay, Shopping, Activity, Drinks, General)
-            - excluded: list of strings (names of members who EXCEPT/DID NOT participate)
-            - exact_splits: dict (member_name: amount) if specific amounts are mentioned for specific people
+            TASKS:
+            1. Correct Speech-to-Text errors (e.g., 'page'->'paid', 'areas'->'Rs', 'D' might be heard as 'the' or 'di').
+            2. Identify Payer: If no name is given but user says 'I' or 'Maine', it's {current_user}.
+            3. Identify Exclusions (MOST IMPORTANT): Look for Hindi negative intent. 
+               - Phrases like 'हमने' (We) mean everyone, BUT if followed by 'X ne nahi khaya' or 'X ko chhod kar', then X MUST be in the 'excluded' list.
+               - Detect 'nahi khaya', 'nhi khaya', 'exclude', 'mat dalo', 'chhod kar', 'nahi tha' in both Hindi script and Hinglish.
+               - Even if a name is a single letter like 'D', catch it in 'D ne nahi khaya'.
+            4. Identify Category and Total Amount (handles Devanagari numerals ५००=500).
             
-            If a field is missing, use null (or empty list for excluded). 
-            Text might be in English, Hindi, or Hinglish.
+            Return ONLY JSON:
+            {{
+              "amount": float,
+              "paid_by": "Name",
+              "title": "Title",
+              "category": "Food/Travel/Stay/Shopping/Activity/Drinks/General",
+              "excluded": ["Name1"],
+              "exact_splits": {{}}
+            }}
             """
             
             response = model.generate_content(prompt)
@@ -75,9 +87,10 @@ def parse_expense_text(text, member_names):
             print(f"Gemini error: {e}")
 
     # Fallback to Regex
-    return _parse_regex(text, member_names)
-def _parse_regex(text, member_names):
-    """Original regex parsing logic with extensive Hinglish support."""
+    return _parse_regex(text, member_names, current_user)
+
+def _parse_regex(text, member_names, current_user=None):
+    """Original regex parsing logic with extensive Hindi/Hinglish support."""
     text_lower = text.lower().strip()
     result = {
         "paid_by": None,
@@ -94,9 +107,11 @@ def _parse_regex(text, member_names):
     # Pattern 1: Currency then Number ("Rs 1000", "₹500")
     amt_pat1 = re.search(r"(?:₹|rs\.?|rupee[s]?|rupya)\s*(\d+(?:\.\d{1,2})?)", text_lower)
     # Pattern 2: Number then Currency ("1000 rs", "500 rupee")
-    amt_pat2 = re.search(r"(\d+(?:\.\d{1,2})?)\s*(?:₹|rs\.?|rupee[s]?|rupya|ki|ka|ke)\b", text_lower)
-    # Pattern 3: Just Number
-    amt_pat3 = re.search(r"\b(\d+(?:\.\d{1,2})?)\b", text_lower)
+    amt_pat2 = re.search(r"(\d+(?:\.\d{1,2})?)\s*(?:₹|rs\.?|rupee[s]?|rupya|ki|ka|ke|रुपये|रूपये|रु|₹)\b", text_lower)
+    # Pattern 3: Number then "ka" for context (e.g. "1000 ka khana")
+    amt_pat3 = re.search(r"(\d+(?:\.\d{1,2})?)\s+(?:ka|ke|ka|के|का)\b", text_lower)
+    # Pattern 4: Just Number
+    amt_pat4 = re.search(r"\b(\d+(?:\.\d{1,2})?)\b", text_lower)
 
     if amt_pat1:
         result["amount"] = float(amt_pat1.group(1))
@@ -104,6 +119,8 @@ def _parse_regex(text, member_names):
         result["amount"] = float(amt_pat2.group(1))
     elif amt_pat3:
         result["amount"] = float(amt_pat3.group(1))
+    elif amt_pat4:
+        result["amount"] = float(amt_pat4.group(1))
         
     if result["amount"]:
         result["confidence"] += 0.3
@@ -119,7 +136,7 @@ def _parse_regex(text, member_names):
             rf"\b{re.escape(name_lower)}\s+ne\b", # Just "X ne ..."
             rf"\b{re.escape(name_lower)}\s+\d+",   # "Abhi 400"
             rf"\b{re.escape(name_lower)}\s+spent\b",
-            rf"\bkharch\s+(?:by|kiya|kiye)\s+{re.escape(name_lower)}\b",
+            rf"\bkharch\s+(?:by|kiya|kiye|किया|किये|किए)\s+{re.escape(name_lower)}\b",
         ]
         for pat in patterns:
             if re.search(pat, text_lower):
@@ -128,6 +145,15 @@ def _parse_regex(text, member_names):
                 break
         if result["paid_by"]:
             break
+
+    # 2b. Current User detection ("Maine 1000 diye")
+    if not result["paid_by"] and current_user:
+        me_patterns = [r"\bmaine\b", r"\bmai\b", r"\bmene\b", r"\bi\b", r"\bme\b", r"\bमैंने\b", r"\bमैने\b"]
+        for pat in me_patterns:
+            if re.search(pat, text_lower):
+                result["paid_by"] = current_user
+                result["confidence"] += 0.3
+                break
 
     # ── 3. Detect exclusions ──
     for name_lower, name_orig in names_lower.items():
@@ -154,12 +180,12 @@ def _parse_regex(text, member_names):
 
     # ── 5. Detect category ──
     category_map = {
-        "Food": ["food", "eat", "dinner", "lunch", "breakfast", "chai", "tea", "khana", "nashta", "biryani", "pizza", "burger", "party", "snacks", "maggi", "samosas?", "momo", "restaraunt", "dhaba"],
-        "Travel": ["cab", "taxi", "auto", "bus", "train", "flight", "petrol", "fuel", "travel", "ticket", "car", "gaadi", "toll", "diesel", "parking", "uber", "ola", "rickshaw"],
-        "Stay": ["hotel", "room", "stay", "hostel", "accommodation", "checkin", "checkout", "rent"],
-        "Shopping": ["shop", "shopping", "buy", "bought", "gift", "clothes", "mall", "kharida", "purchase"],
-        "Activity": ["trek", "activity", "rafting", "ticket", "entry", "park", "museum", "adventure", "safari", "boating"],
-        "Drinks": ["drink", "beer", "wine", "alcohol", "bar", "daaru", "sharab", "cold\s*drink", "pepsi", "coke", "sprite", "soda", "pinalia", "peeli"],
+        "Food": ["food", "eat", "dinner", "lunch", "breakfast", "chai", "tea", "khana", "nashta", "biryani", "pizza", "burger", "party", "snacks", "maggi", "samosas?", "momo", "restaraunt", "dhaba", "खाना", "खाया", "नाश्ता", "चाय"],
+        "Travel": ["cab", "taxi", "auto", "bus", "train", "flight", "petrol", "fuel", "travel", "ticket", "car", "gaadi", "toll", "diesel", "parking", "uber", "ola", "rickshaw", "गाड़ी", "किराया", "ऑटो", "टैक्सी"],
+        "Stay": ["hotel", "room", "stay", "hostel", "accommodation", "checkin", "checkout", "rent", "होटल", "कमरा", "रुके"],
+        "Shopping": ["shop", "shopping", "buy", "bought", "gift", "clothes", "mall", "kharida", "purchase", "ख़रीदा", "सामान"],
+        "Activity": ["trek", "activity", "rafting", "ticket", "entry", "park", "museum", "adventure", "safari", "boating", "टिकट", "घूमना"],
+        "Drinks": ["drink", "beer", "wine", "alcohol", "bar", "daaru", "sharab", "cold\s*drink", "pepsi", "coke", "sprite", "soda", "pinalia", "peeli", "दारू", "शराब", "कोल्ड\s*ड्रिंक"],
     }
     for cat, keywords in category_map.items():
         for kw in keywords:

@@ -90,6 +90,7 @@
         <div class="mhdr">
             <div style="display:flex;align-items:center;gap:10px">
                 <h2 style="margin:0">🚀 New Trip</h2>
+                <div class="lang-toggle" id="trLangT" onclick="toggleTrLang()" title="Switch Language (English / Hindi)">EN</div>
                 <button id="trMic" class="mic-btn" style="position:static;width:34px;height:34px;transform:none" title="Use Voice AI to autofill">🎤</button>
             </div>
             <button class="mx" onclick="closeC()">&times;</button>
@@ -316,22 +317,65 @@ function addR(nameStr = ''){
 
 const trMic = document.getElementById('trMic');
 const trAiBox = document.getElementById('trAiBox');
-let trRec = null, isTrRec = false;
+let trRec = null, isTrRec = false, trLang = 'en-IN';
+const trLangT = document.getElementById('trLangT');
+
+function toggleTrLang(){
+    const wasRec = isTrRec;
+    if(wasRec) { 
+        isTrRec = false; 
+        trRec.stop(); 
+        stopTrR(); 
+    }
+    
+    trLang = trLang === 'en-IN' ? 'hi-IN' : 'en-IN';
+    trLangT.textContent = trLang === 'en-IN' ? 'EN' : 'HI';
+    trLangT.classList.toggle('hi', trLang === 'hi-IN');
+    if(trRec) trRec.lang = trLang;
+    
+    if(wasRec) setTimeout(() => { isTrRec=true; trRec.start(); startTrR(); }, 300);
+}
 
 if('webkitSpeechRecognition' in window||'SpeechRecognition' in window){
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-    trRec=new SR();trRec.lang='en-IN';
+    trRec=new SR();
+    trRec.lang=trLang;
+    trRec.continuous=true;
+    trRec.interimResults=true;
+    
+    let finalTrStr = '';
     trRec.onresult=ev=>{
-        const t=ev.results[0][0].transcript;
-        stopTrR();
-        trAiBox.textContent = `Auto-filling...`;
-        parseTripAI(t);
+        let interim = '';
+        for(let i=ev.resultIndex; i<ev.results.length; ++i){
+            if(ev.results[i].isFinal) finalTrStr += ev.results[i][0].transcript;
+            else interim += ev.results[i][0].transcript;
+        }
+        trAiBox.innerHTML = `<span style="opacity:0.6">${finalTrStr}</span> <b>${interim}</b>`;
     };
-    trRec.onend=()=>stopTrR()
+    trRec.onend=()=> {
+        if(isTrRec) {
+            trRec.start();
+        } else if(finalTrStr) {
+            trAiBox.textContent = `Processing "${finalTrStr}"...`;
+            parseTripAI(finalTrStr);
+            finalTrStr = '';
+        }
+    }
 }
-trMic.addEventListener('click',()=>{if(!trRec)return;if(isTrRec){trRec.stop()}else{trRec.start();startTrR()}});
-function startTrR(){isTrRec=true;trMic.classList.add('on');trMic.textContent='⏺';trAiBox.style.display='block';trAiBox.innerHTML='<div class="spin" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px"></div> Listening... Speak now!';}
-function stopTrR(){isTrRec=false;trMic.classList.remove('on');trMic.textContent='🎤';}
+trMic.addEventListener('click',()=>{
+    if(!trRec)return;
+    if(isTrRec){
+        isTrRec=false;
+        trRec.stop();
+        stopTrR();
+    }else{
+        finalTrStr = '';
+        trRec.start();
+        startTrR();
+    }
+});
+function startTrR(){isTrRec=true;trMic.classList.add('on');trMic.textContent='⏹';trAiBox.style.display='block';trAiBox.innerHTML='<div class="spin" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px"></div> Listening...';}
+function stopTrR(){trMic.classList.remove('on');trMic.textContent='🎤';}
 
 async function parseTripAI(text) {
     try {

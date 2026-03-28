@@ -7,12 +7,14 @@ Two modes:
 """
 
 
-def compute_settlements(balances, threshold=5.0):
+def compute_settlements(balances, threshold=5.0, treasurer_id=None):
     """
     Greedy algorithm: match highest debtor ↔ highest creditor.
     Returns list of {from_id, from_name, to_id, to_name, amount}
+    
+    If treasurer_id is provided, we assume the sum of balances = Pool Cash.
     """
-    debtors, creditors = _split(balances, threshold)
+    debtors, creditors = _split(balances, threshold, treasurer_id)
 
     debtors.sort(key=lambda x: x["amount"], reverse=True)
     creditors.sort(key=lambda x: x["amount"], reverse=True)
@@ -96,13 +98,31 @@ def compute_pool_coordinator(balances, coordinator_id, threshold=5.0):
     }
 
 
-def _split(balances, threshold):
+def _split(balances, threshold, treasurer_id=None):
     """Split balances into debtors and creditors lists."""
     debtors, creditors = [], []
+    total_sum = 0
+    
     for mid, info in balances.items():
         net = info["net_balance"]
+        total_sum += net
         if net < -threshold:
             debtors.append({"id": mid, "name": info["name"], "amount": abs(net)})
         elif net > threshold:
             creditors.append({"id": mid, "name": info["name"], "amount": net})
+            
+    # If there's a treasurer and the sum is significantly positive, 
+    # then the treasurer is holding that much 'Trip Pool' money.
+    if treasurer_id and total_sum > threshold:
+        treasurer_info = balances.get(treasurer_id)
+        if treasurer_info:
+            # The Treasurer (as the pool coordinator) 'owes' the pool funds to the creditors.
+            # We add a virtual debt for the treasurer representing the group cash.
+            debtors.append({
+                "id": treasurer_id, 
+                "name": f"{treasurer_info['name']} (Trip Pool)", 
+                "amount": round(total_sum, 2),
+                "is_pool": True
+            })
+            
     return debtors, creditors

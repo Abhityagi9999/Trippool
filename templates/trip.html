@@ -107,6 +107,7 @@
 <!-- Input Bar -->
 <div class="input-bar">
     <div class="input-bar-inner">
+        <div class="lang-toggle" id="langT" onclick="toggleLang()" title="Switch Language (English / Hindi)">EN</div>
         <input id="ai" placeholder='Say "I paid 500 for drinks"' autocomplete="off">
         <button class="clear-btn" id="cl">✖</button>
         <button class="mic-btn" id="mic">🎤</button>
@@ -295,17 +296,21 @@ function rBals(){
     const html = B.map(b=>{
         const putIn = b.contribution + b.total_paid;
         const net = b.net_balance;
-        const isTreas = S.treasurer_id === b.member_id ? ' <span title="Trip Treasurer 👑" style="color:#fbbf24;margin-left:4px">👑</span>' : '';
-        return `<div class="bal ${net>=0?'pos':'neg'}" style="cursor:pointer;transition:transform 0.1s, background 0.2s" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background=''" onclick="showMemberHistory(${b.member_id})">
+        const isTreas = S.treasurer_id === b.member_id;
+        const treasIcon = isTreas ? ' <span title="Trip Treasurer 👑" style="color:#fbbf24;margin-left:4px">👑</span>' : '';
+        const cashHeldHtml = (isTreas && b.cash_on_hand > 0) ? `<div style="font-size:0.65rem;font-weight:700;color:var(--t2);margin-top:6px;background:rgba(251,191,36,0.1);padding:4px 8px;border-radius:6px;border:1px solid rgba(251,191,36,0.2);display:inline-block">💰 Holding Funds: ₹${fmt(b.cash_on_hand)}</div>` : '';
+
+        return `<div class="bal ${net>=0?'pos':'neg'}" style="cursor:pointer;transition:transform 0.1s, background 0.2s;padding-bottom:12px" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background=''" onclick="showMemberHistory(${b.member_id})">
             <div style="flex:1">
                 <div class="bal-nm" style="display:flex;align-items:center;gap:4px">
-                    ${esc(b.name)}${isTreas} 
+                    ${esc(b.name)}${treasIcon} 
                     <button style="background:none;border:none;cursor:pointer;opacity:0.5;font-size:0.85rem;margin-left:2px" onclick="event.stopPropagation();editPool(${b.member_id}, ${b.contribution})" title="Edit Pool Contribution">✏️</button>
                 </div>
                 <div class="bal-sub" style="margin-top:6px;line-height:1.4">
                     <span style="color:var(--t1);font-weight:500">Put In: ₹${fmt(putIn)}</span> <span style="font-size:0.7em;opacity:0.6">(₹${fmt(b.contribution)} Pool + ₹${fmt(b.total_paid)} Paid)</span><br>
                     <span style="color:var(--t2);">➖ Used: ₹${fmt(b.total_consumed)}</span>
                 </div>
+                ${cashHeldHtml}
             </div>
             <div class="bal-v ${net>=0?'pos':'neg'}">
                 <div style="font-size:0.6rem;color:var(--t3);text-transform:uppercase;margin-bottom:-2px">${net>=0?'remaining':'owes'}</div>
@@ -506,7 +511,14 @@ async function parseAI(){
     if(!t)return;
     tab('expenses');
     try{
-        const r=await f(`/api/trips/${TID}/parse`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t})});
+        const r=await f(`/api/trips/${TID}/parse`,{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({
+                text:t, 
+                current_user: "{{ username }}"
+            })
+        });
         showPv(r,t);
     }catch(e){ }
 }
@@ -602,34 +614,70 @@ async function cfmAI(){
     }catch(e){ }
 }
 
-const micB=document.getElementById('mic');let rec=null,isRec=false;
+const micB=document.getElementById('mic');let rec=null,isRec=false,curLang='en-IN';
+const langT=document.getElementById('langT');
+
+function toggleLang(){
+    const wasRec = isRec;
+    if(wasRec) stopR();
+    
+    curLang = curLang === 'en-IN' ? 'hi-IN' : 'en-IN';
+    langT.textContent = curLang === 'en-IN' ? 'EN' : 'HI';
+    langT.classList.toggle('hi', curLang === 'hi-IN');
+    if(rec) rec.lang = curLang;
+    
+    toast(`Switched to ${curLang === 'en-IN' ? 'English' : 'Hindi'}`, 'ok');
+    
+    if(wasRec) setTimeout(startR, 300); // Auto-restart in new language
+}
+
 if('webkitSpeechRecognition' in window||'SpeechRecognition' in window){
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
     rec=new SR();
-    rec.lang='en-IN';
+    rec.continuous=true;
+    rec.interimResults=true;
+    rec.lang=curLang;
+
     rec.onresult=ev=>{
-        const t=ev.results[0][0].transcript;
-        document.getElementById('ai').value=t;
-        stopR();
-        parseAI();
+        let interim = '';
+        for(let i=ev.resultIndex; i<ev.results.length; ++i){
+            if(ev.results[i].isFinal){
+                document.getElementById('ai').value += ev.results[i][0].transcript;
+            } else {
+                interim += ev.results[i][0].transcript;
+            }
+        }
+        // Show interim text in placeholder or slightly faded in input if possible
+        if(interim) {
+            document.getElementById('ai').placeholder = '... ' + interim;
+        }
+        document.getElementById('cl').style.display = 'block';
     };
     rec.onerror=ev=>{
         if(ev.error !== 'no-speech') toast('Mic error: '+ev.error,'err');
         stopR();
     };
-    rec.onend=()=>stopR()
+    rec.onend=()=> { if(isRec) rec.start(); } // Keep listening if we didn't manually stop
 }
+
 micB.addEventListener('click',()=>{
-    if(!rec){toast('Microphone not supported in this browser','err');return;}
-    if(isRec){rec.stop()}else{rec.start();startR()}
+    if(!rec){toast('Microphone not supported','err');return;}
+    if(isRec){stopR()}else{startR()}
 });
+
 function startR(){
-    isRec=true;
-    micB.classList.add('on');
-    micB.textContent='⏺';
-    document.getElementById('ai').placeholder='Listening... Speak now!';
+    try {
+        document.getElementById('ai').value = ''; // Clear for new recording
+        rec.start();
+        isRec=true;
+        micB.classList.add('on');
+        micB.textContent='⏹';
+        document.getElementById('ai').placeholder='Listening... Speak now';
+        toast('Listening... Tap ⏹ when done', 'ok');
+    } catch(e) { console.error(e); }
 }
 function stopR(){
+    rec.stop();
     isRec=false;
     micB.classList.remove('on');
     micB.textContent='🎤';

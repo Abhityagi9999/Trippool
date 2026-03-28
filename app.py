@@ -265,9 +265,9 @@ def api_get_balances(trip_id):
 
 @app.route("/api/trips/<int:trip_id>/settlement", methods=["GET"])
 def api_get_settlement(trip_id):
-    """Return optimised settlement transactions."""
+    trip = models.get_trip(trip_id)
     balances = models.get_balances(trip_id)
-    settlements = compute_settlements(balances)
+    settlements = compute_settlements(balances, treasurer_id=trip.get("treasurer_id"))
     return jsonify(settlements)
 
 
@@ -303,8 +303,9 @@ def api_parse_expense(trip_id):
 
     members = models.get_members(trip_id)
     member_names = [m["name"] for m in members]
+    current_user = data.get("current_user")
 
-    parsed = parse_expense_text(text, member_names)
+    parsed = parse_expense_text(text, member_names, current_user)
 
     # Resolve paid_by name to member_id
     if parsed["paid_by"]:
