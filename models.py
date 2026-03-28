@@ -89,14 +89,19 @@ def init_db():
     """)
 
     # Attempt to add columns to handle legacy databases gracefully
-    try:
-        conn.execute("ALTER TABLE trips ADD COLUMN treasurer_id INTEGER DEFAULT NULL")
-    except sqlite3.OperationalError:
-        pass # Column already exists
-    try:
-        conn.execute("ALTER TABLE trips ADD COLUMN owner_id INTEGER DEFAULT NULL")
-    except sqlite3.OperationalError:
-        pass
+    for table_action in [
+        ("trips", "ADD COLUMN treasurer_id INTEGER DEFAULT NULL"),
+        ("trips", "ADD COLUMN owner_id INTEGER DEFAULT NULL"),
+        ("members", "ADD COLUMN initial_contribution REAL DEFAULT 0"),
+        ("expenses", "ADD COLUMN type TEXT DEFAULT 'pool_expense'"),
+        ("expenses", "ADD COLUMN category TEXT DEFAULT 'General'"),
+        ("users", "ADD COLUMN password TEXT DEFAULT NULL")
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE {table_action[0]} {table_action[1]}")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass # Column likely already exists
 
     # Legacy fallback: Ensure password column exists if not present
     try:
