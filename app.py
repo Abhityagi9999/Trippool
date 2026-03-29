@@ -15,22 +15,13 @@ app.secret_key = "trippool_super_secret_key"
 app.permanent_session_lifetime = timedelta(days=365)
 CORS(app)
 
-# Initialise the database on first run
-_db_init_done = False
-@app.before_request
-def safe_init():
-    global _db_init_done
-    if not _db_init_done:
-        try:
-            print("DEBUG: Starting lazy init_db()")
-            models.init_db()
-            _db_init_done = True
-            print("DEBUG: Finished lazy init_db() successfully")
-        except Exception as e:
-            import sys
-            import traceback
-            sys.stderr.write(f"CRITICAL ERROR during lazy init_db: {str(e)}\n")
-            traceback.print_exc(file=sys.stderr)
+# Initialise the database once at startup
+try:
+    models.init_db()
+except Exception as e:
+    import sys, traceback
+    sys.stderr.write(f"INIT_DB ERROR: {e}\n")
+    traceback.print_exc(file=sys.stderr)
 
 @app.after_request
 def add_header(r):
