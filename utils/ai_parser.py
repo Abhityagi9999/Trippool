@@ -41,7 +41,7 @@ def parse_expense_text(text, member_names, current_user=None):
         try:
             prompt = f"""
             You are an expert expense parser for 'TripPool AI'. 
-            The input comes from a microphone and may contain phonetic errors or natural speech disfluencies.
+            The input comes from a microphone and may contain phonetic errors, natural speech disfluencies, and mixed Hindi/English (Hinglish).
             
             Input Text: "{text}"
             Trip Members: {', '.join(member_names)}
@@ -50,11 +50,13 @@ def parse_expense_text(text, member_names, current_user=None):
             TASKS:
             1. Correct Speech-to-Text errors (e.g., 'page'->'paid', 'areas'->'Rs', 'D' might be heard as 'the' or 'di').
             2. Identify Payer: If no name is given but user says 'I' or 'Maine', it's {current_user}.
-            3. Identify Exclusions (MOST IMPORTANT): Look for Hindi negative intent. 
+            3. Identify Exclusions: Look for Hindi negative intent. 
                - Phrases like 'हमने' (We) mean everyone, BUT if followed by 'X ne nahi khaya' or 'X ko chhod kar', then X MUST be in the 'excluded' list.
                - Detect 'nahi khaya', 'nhi khaya', 'exclude', 'mat dalo', 'chhod kar', 'nahi tha' in both Hindi script and Hinglish.
-               - Even if a name is a single letter like 'D', catch it in 'D ne nahi khaya'.
-            4. Identify Category and Total Amount (handles Devanagari numerals ५००=500).
+            4. Identify Exact Splits: If specific amounts are mentioned for specific people (e.g., "100 ka A ne, 200 ka B ne khaya", "A's share is 150"), populate the 'exact_splits' object mapping "Member Name" to the numerical amount.
+               - IMPORTANT: The names in 'exact_splits' MUST perfectly match names from the Trip Members list. 
+               - Example: "1000 food - A 100, B 200" -> {{"A": 100.0, "B": 200.0}}
+            5. Identify Category and Total Amount (handles Devanagari numerals ५००=500).
             
             Return ONLY JSON:
             {{
@@ -63,7 +65,7 @@ def parse_expense_text(text, member_names, current_user=None):
               "title": "Title",
               "category": "Food/Travel/Stay/Shopping/Activity/Drinks/General",
               "excluded": ["Name1"],
-              "exact_splits": {{}}
+              "exact_splits": {{"Name1": 100.0}}
             }}
             """
             
@@ -172,6 +174,24 @@ def _parse_regex(text, member_names, current_user=None):
                 if name_orig not in result["excluded"]:
                     result["excluded"].append(name_orig)
                 result["confidence"] += 0.1
+                break
+
+    # ── 4. Detect exact splits ──
+    # Look for patterns like "A 100", "A ne 100", "100 ka A" in Hinglish
+    for name_lower, name_orig in names_lower.items():
+        # Avoid matching the total amount if it happens to be next to a name
+        split_patterns = [
+            rf"\b{re.escape(name_lower)}\s+(?:ne\s+)?(?:ka\s+)?(\d+(?:\.\d{1,2})?)\b",
+            rf"\b(\d+(?:\.\d{1,2})?)\s+(?:ka\s+)?(?:sirf\s+)?(?:uske\s+|isme\s+)?{re.escape(name_lower)}\b",
+            rf"\b{re.escape(name_lower)}\s*:\s*(\d+(?:\.\d{1,2})?)\b"
+        ]
+        for pat in split_patterns:
+            match = re.search(pat, text_lower)
+            if match:
+                val = float(match.group(1))
+                if result["amount"] is None or val < result["amount"]: # prevent confusing total amount with split
+                    result["exact_splits"][name_orig] = val
+                    result["confidence"] += 0.1
                 break
 
     # -- 3b. If Payer was accidentally set to someone who is excluded, unset it --

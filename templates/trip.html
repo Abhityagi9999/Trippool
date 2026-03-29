@@ -560,6 +560,13 @@ async function parseAI(){
     const inp=document.getElementById('ai'),t=inp.value.trim();
     if(!t)return;
     tab('expenses');
+
+    // Show loading state
+    const sndBtn = document.getElementById('snd');
+    const origHtml = sndBtn.innerHTML;
+    sndBtn.innerHTML = '<div class="spin" style="width:18px;height:18px;margin:0;border-width:2px;border-top-color:#fff;"></div>';
+    inp.disabled = true;
+
     try{
         const r=await f(`/api/trips/${TID}/parse`,{
             method:'POST',
@@ -570,12 +577,23 @@ async function parseAI(){
             })
         });
         showPv(r,t);
-    }catch(e){ }
+    }catch(e){ 
+        toast('Parse failed. Try again.','err');
+    } finally {
+        sndBtn.innerHTML = origHtml;
+        inp.disabled = false;
+        if (document.getElementById('aipv').classList.contains('hidden')) {
+            inp.focus();
+        }
+    }
 }
 
 function editAIPrompt(){
     document.getElementById('aipv').classList.add('hidden');
-    document.getElementById('ai').focus();
+    const inp = document.getElementById('ai');
+    inp.focus();
+    // Move cursor to end
+    inp.selectionStart = inp.selectionEnd = inp.value.length;
 }
 
 function showPv(p,raw){
@@ -597,19 +615,19 @@ function showPv(p,raw){
     }
 
     el.innerHTML=`
-    <div class="aipv">
-        <div class="aipv-hdr">🤖 AI Preview</div>
+    <div class="aipv" style="box-shadow: 0 4px 20px rgba(129,140,248,.15);">
+        <div class="aipv-hdr" style="font-size:0.85rem;background:var(--gp);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">✨ AI Parsed Expense</div>
         <div class="aipv-grid">
             <dt>Title</dt><dd><input class="aipv-input" id="pvT" value="${esc(p.title)}"></dd>
-            <dt>Amount</dt><dd><input class="aipv-input" id="pvA" type="number" value="${p.amount}"></dd>
+            <dt>Amount</dt><dd><input class="aipv-input" id="pvA" type="number" value="${p.amount || ''}"></dd>
             <dt>Payer</dt><dd><select class="aipv-input" id="pvP">${payerOptions}</select></dd>
             <dt>Category</dt><dd><select class="aipv-input" id="pvC">${catOptions}</select></dd>
-            <dt>Split</dt><dd style="padding-top:4px;font-size:0.85rem">${splitDesc}</dd>
+            <dt>Split</dt><dd style="padding-top:4px;font-size:0.85rem;color:var(--accent);font-weight:600;">${splitDesc}</dd>
         </div>
         <div class="aipv-btns">
-            <button class="btn btn-p btn-sm" onclick="cfmAI()">✅ Confirm</button>
-            <button class="btn btn-g btn-sm" onclick="editAIPrompt()">✏️ Fix Prompt</button>
-            <button class="btn btn-g btn-sm" onclick="document.getElementById('aipv').classList.add('hidden')">Cancel</button>
+            <button class="btn btn-p btn-sm" onclick="cfmAI()" style="flex:1;">✅ Confirm & Log</button>
+            <button class="btn btn-g btn-sm" onclick="editAIPrompt()">✏️ Edit</button>
+            <button class="btn btn-g btn-sm" onclick="document.getElementById('aipv').classList.add('hidden')" style="color:var(--red);border-color:rgba(251,113,133,0.3);">Cancel</button>
         </div>
     </div>`;
 }
