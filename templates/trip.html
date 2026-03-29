@@ -307,7 +307,7 @@ function rBals(){
                     <button style="background:none;border:none;cursor:pointer;opacity:0.5;font-size:0.85rem;margin-left:2px" onclick="event.stopPropagation();editPool(${b.member_id}, ${b.contribution})" title="Edit Pool Contribution">✏️</button>
                 </div>
                 <div class="bal-sub" style="margin-top:6px;line-height:1.4">
-                    <span style="color:var(--t1);font-weight:500">Put In: ₹${fmt(putIn)}</span> <span style="font-size:0.7em;opacity:0.6">(₹${fmt(b.contribution)} Pool${b.total_paid > 0 ? ` + ₹${fmt(b.total_paid)} Paid` : ''})</span><br>
+                    <span style="color:var(--t1);font-weight:500">Put In: ₹${fmt(putIn)}</span> <span style="font-size:0.7em;opacity:0.6">(₹${fmt(b.contribution)} Pool${b.out_of_pocket > 0 ? ` + ₹${fmt(b.out_of_pocket)} Paid` : ''})</span><br>
                     <span style="color:var(--t2);">➖ Used: ₹${fmt(b.total_consumed)}</span>
                 </div>
                 ${cashHeldHtml}
@@ -732,7 +732,7 @@ function generatePDF() {
         html += `<h3 style="border-bottom:2px solid #e2e8f0;padding-bottom:5px;font-size:16px;margin-top:25px">Member Balances</h3>`;
         html += `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px">`;
         B.forEach(b => {
-            const putIn = b.contribution + b.total_paid;
+            const putIn = b.total_put_in;
             const isTreas = S.treasurer_id === b.member_id ? ' <span style="color:#f59e0b">👑</span>' : '';
             const netText = b.net_balance >= 0 
                 ? `<span style="color:#10b981;font-weight:bold">Gets Back ₹${fmt(b.net_balance)}</span>` 

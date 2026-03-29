@@ -459,15 +459,16 @@ def get_balances(trip_id):
                 (trip_id, treasurer_id)
             ).fetchone()[0]
 
-            # Pool available to treasurer = initial contributions + non-treas payments
-            # (NOT including treasurer's own personal payments - those are from their pocket)
-            pool_available = pool_initial + non_treas_paid
+            # Pool available to treasurer = initial contributions ONLY
+            # Non-treasurer payments are DIRECT out-of-pocket spending, not pool additions.
+            # They never enter the treasurer's cash box.
+            pool_available = pool_initial
 
             # If treasurer pool_expenses exceed pool_available, they paid the overflow from pocket
             extra_from_pocket = max(0, treas_pool_exp - pool_available)
 
             # Pool Collected = all money committed to the pool
-            # = initial contributions + non-treas payments + treasurer's personal payments
+            # = initial contributions + treasurer's personal payments + any non-treas payments
             pool_collected = pool_initial + non_treas_paid + treas_personal
 
             # Treasurer's cash on hand = unspent pool money
@@ -506,11 +507,13 @@ def get_balances(trip_id):
 
             if mid == treasurer_id:
                 # Treasurer's put_in = initial + personal payments + any pool overflow from pocket
-                total_put_in = contribution + treas_personal + extra_from_pocket
+                out_of_pocket = treas_personal + extra_from_pocket
+                total_put_in = contribution + out_of_pocket
                 member_cash = cash_on_hand
             else:
                 # Non-Treasurer: ALL their payments are out-of-pocket
-                total_put_in = contribution + raw_paid
+                out_of_pocket = raw_paid
+                total_put_in = contribution + out_of_pocket
                 member_cash = 0
 
             net = round(total_put_in - total_consumed, 2)
@@ -520,6 +523,7 @@ def get_balances(trip_id):
                 "name": name,
                 "contribution": contribution,
                 "total_paid": raw_paid,
+                "out_of_pocket": round(out_of_pocket, 2),
                 "total_put_in": round(total_put_in, 2),
                 "total_consumed": round(total_consumed, 2),
                 "net_balance": net,
