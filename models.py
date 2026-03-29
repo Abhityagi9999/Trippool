@@ -375,21 +375,15 @@ def get_balances(trip_id):
         name = m["name"]
         contribution = m["initial_contribution"]
 
-        # Only PERSONAL expenses increase Put In (out-of-pocket payments)
-        personal_paid = conn.execute(
-            "SELECT COALESCE(SUM(amount), 0) AS total FROM expenses "
-            "WHERE trip_id = ? AND paid_by = ? AND type = 'personal_expense'",
-            (trip_id, mid),
-        ).fetchone()["total"]
-
-        # Total of ALL expenses paid by this member (for display/stats)
-        all_paid = conn.execute(
+        # Total paid by this member (raw sum of all their expense entries)
+        paid_row = conn.execute(
             "SELECT COALESCE(SUM(amount), 0) AS total FROM expenses "
             "WHERE trip_id = ? AND paid_by = ?",
             (trip_id, mid),
-        ).fetchone()["total"]
+        ).fetchone()
+        raw_paid = paid_row["total"]
 
-        # Total consumed by this member (their share of ALL expenses)
+        # Total consumed by this member
         consumed_row = conn.execute(
             "SELECT COALESCE(SUM(s.amount_consumed), 0) AS total "
             "FROM splits s JOIN expenses e ON s.expense_id = e.id "
@@ -398,38 +392,38 @@ def get_balances(trip_id):
         ).fetchone()
         total_consumed = consumed_row["total"]
 
-        # Put In = Initial Contribution + PERSONAL Expenses Only
-        # Pool expenses do NOT increase Put In (they come from the common pot)
-        total_put_in = contribution + personal_paid
+        # Put In = Initial Contribution + Personal Expenses Paid
+        total_put_in = contribution + raw_paid
         
-        # Net balance: What you've put in minus what you've consumed
-        # Positive = Remaining, Negative = Owes
+        # Net balance: What you've contributed overall minus what you've consumed
         net = total_put_in - total_consumed
         
-        # If this is the treasurer, calculate physical cash they hold
-        # Cash on Hand = Initial Pool - All Pool Expenses
+        # If this is the treasurer, we can also calculate total physical cash they hold
+        # Physical Pool = Total INITIAL contributions - Total POOL spending
         cash_held = 0
         if mid == treasurer_id:
-            total_pool_spent = conn.execute(
+            pool_spent = conn.execute(
                 "SELECT COALESCE(SUM(amount), 0) FROM expenses "
                 "WHERE trip_id = ? AND type = 'pool_expense'",
                 (trip_id,)
             ).fetchone()[0]
-            cash_held = pool_collected - total_pool_spent
+            cash_held = pool_collected - pool_spent
 
         net = round(net, 2)
 
-        balances[mid] = {
-            "member_id": mid,
-            "name": name,
-            "contribution": contribution,
-            "total_paid": personal_paid,    # Only personal out-of-pocket payments
-            "total_paid_all": all_paid,     # All payments (pool + personal) for stats
-            "total_put_in": total_put_in,   # Initial + Personal only
-            "total_consumed": total_consumed,
-            "net_balance": round(net, 2),
-            "cash_on_hand": cash_held,
-        }
+        try:
+            balances[mid] = {
+                "member_id": mid,
+                "name": name,
+                "contribution": contribution,
+                "total_paid": raw_paid,       # Personal out-of-pocket payments
+                "total_put_in": total_put_in, # Initial + Personal
+                "total_consumed": total_consumed,
+                "net_balance": round(net, 2),
+                "cash_on_hand": cash_held,
+            }
+        except Exception:
+            balances[mid] = { "member_id": mid, "name": name, "error": True, "net_balance": 0 }
 
     conn.close()
     return balances
@@ -459,27 +453,18 @@ def get_trip_summary(trip_id):
         pool_collected = 0
         pool_balance = 0
     elif treasurer_id:
-        # Pool Collected = Initial Contributions + All Personal Expenses
+        pool_collected = sum(b["contribution"] + b["total_paid"] for b in balances.values())
         pool_initial = sum(b["contribution"] for b in balances.values())
-        total_personal = conn.execute(
-            "SELECT COALESCE(SUM(amount), 0) FROM expenses "
-            "WHERE trip_id = ? AND type = 'personal_expense'",
-            (trip_id,)
-        ).fetchone()[0]
-        pool_collected = pool_initial + total_personal
-        
-        # Pool Balance (Cash on Hand) = Initial Pool - All Pool Expenses
-        total_pool_spent = conn.execute(
-            "SELECT COALESCE(SUM(amount), 0) FROM expenses "
-            "WHERE trip_id = ? AND type = 'pool_expense'",
-            (trip_id,)
-        ).fetchone()[0]
-        pool_balance = pool_initial - total_pool_spent
+        pool_spent_by_treasurer = conn.execute(
+            "SELECT COALESCE(SUM(amount), 0) AS total FROM expenses "
+            "WHERE trip_id = ? AND paid_by = ? AND type = 'pool_expense'",
+            (trip_id, treasurer_id)
+        ).fetchone()["total"]
+        pool_balance = pool_initial - pool_spent_by_treasurer
     else:
         # Not chosen yet
         pool_collected = sum(b["contribution"] for b in balances.values())
         pool_balance = pool_collected
-
 
     categories = conn.execute(
         "SELECT category, SUM(amount) AS total FROM expenses "
