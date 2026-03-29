@@ -15,15 +15,15 @@ if os.environ.get('VERCEL') or os.environ.get('RENDER'):
 
 def get_db():
     """Return a new database connection with row_factory."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
-def ensure_column(table_name, column_def):
-    """Safely add a column if it doesn't exist using PRAGMA checks."""
-    conn = get_db()
+def _ensure_column(conn, table_name, column_def):
+    """Safely add a column if it doesn't exist. Uses existing connection."""
     col_name = column_def.split()[0]
     cursor = conn.execute(f"PRAGMA table_info({table_name})")
     columns = [row[1] for row in cursor.fetchall()]
@@ -31,10 +31,8 @@ def ensure_column(table_name, column_def):
         try:
             conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_def}")
             conn.commit()
-            print(f"DEBUG: Added column {col_name} to {table_name}")
-        except Exception as e:
-            print(f"DEBUG: Failed to add column {col_name} to {table_name}: {e}")
-    conn.close()
+        except Exception:
+            pass
 
 
 def init_db():
@@ -104,14 +102,13 @@ def init_db():
     );
     """)
 
-    # Ensure all legacy columns exist across all tables
-    ensure_column("trips", "treasurer_id INTEGER DEFAULT NULL")
-    ensure_column("trips", "owner_id INTEGER DEFAULT NULL")
-    ensure_column("members", "initial_contribution REAL DEFAULT 0")
-    ensure_column("expenses", "type TEXT DEFAULT 'pool_expense'")
-    ensure_column("expenses", "category TEXT DEFAULT 'General'")
-    ensure_column("users", "password TEXT DEFAULT NULL")
-    conn.execute("PRAGMA foreign_keys = ON")
+    # Ensure all legacy columns exist (using same connection)
+    _ensure_column(conn, "trips", "treasurer_id INTEGER DEFAULT NULL")
+    _ensure_column(conn, "trips", "owner_id INTEGER DEFAULT NULL")
+    _ensure_column(conn, "members", "initial_contribution REAL DEFAULT 0")
+    _ensure_column(conn, "expenses", "type TEXT DEFAULT 'pool_expense'")
+    _ensure_column(conn, "expenses", "category TEXT DEFAULT 'General'")
+    _ensure_column(conn, "users", "password TEXT DEFAULT NULL")
 
     conn.commit()
     conn.close()
@@ -348,12 +345,16 @@ def delete_expense(expense_id):
 def get_balances(trip_id):
     """
     Calculate net balance for each member.
-    Balance = (initial_contribution + total_paid) - total_consumed
-    Positive → should receive money
-    Negative → owes money
+
+    LOGIC:
+    - Treasurer paying pool_expense → money comes from pool, Treasurer's put_in stays same
+    - Treasurer paying personal_expense → out of pocket, Treasurer's put_in increases
+    - Non-Treasurer paying anything → out of pocket, their put_in increases, pool grows
+    - put_in = initial_contribution + personal out-of-pocket payments
+    - net_balance = put_in - total_consumed
     """
     conn = get_db()
-    
+
     trip_row = conn.execute("SELECT treasurer_id FROM trips WHERE id = ?", (trip_id,)).fetchone()
     raw_treasurer = trip_row["treasurer_id"] if trip_row else None
     no_treasurer = (raw_treasurer == -1)
@@ -363,11 +364,23 @@ def get_balances(trip_id):
         "SELECT * FROM members WHERE trip_id = ?", (trip_id,)
     ).fetchall()
 
-    # Total initial pool collected from ALL members
-    pool_collected = conn.execute(
+    # Total initial pool from ALL members
+    pool_initial = conn.execute(
         "SELECT COALESCE(SUM(initial_contribution), 0) FROM members WHERE trip_id = ?",
         (trip_id,)
     ).fetchone()[0]
+
+    # Total expenses paid by non-treasurer members (these add to pool)
+    non_treas_paid = 0
+    if treasurer_id:
+        non_treas_paid = conn.execute(
+            "SELECT COALESCE(SUM(amount), 0) FROM expenses "
+            "WHERE trip_id = ? AND paid_by != ?",
+            (trip_id, treasurer_id)
+        ).fetchone()[0]
+
+    # Pool Collected = initial contributions + non-treasurer payments
+    pool_collected = pool_initial + non_treas_paid
 
     balances = {}
     for m in members:
@@ -375,58 +388,62 @@ def get_balances(trip_id):
         name = m["name"]
         contribution = m["initial_contribution"]
 
-        # Total paid by this member (raw sum of all their expense entries)
-        paid_row = conn.execute(
-            "SELECT COALESCE(SUM(amount), 0) AS total FROM expenses "
+        # Total paid by this member (ALL expenses)
+        raw_paid = conn.execute(
+            "SELECT COALESCE(SUM(amount), 0) FROM expenses "
             "WHERE trip_id = ? AND paid_by = ?",
             (trip_id, mid),
-        ).fetchone()
-        raw_paid = paid_row["total"]
+        ).fetchone()[0]
 
-        # Total consumed by this member
-        consumed_row = conn.execute(
-            "SELECT COALESCE(SUM(s.amount_consumed), 0) AS total "
+        # Total consumed by this member (their share of all expenses)
+        total_consumed = conn.execute(
+            "SELECT COALESCE(SUM(s.amount_consumed), 0) "
             "FROM splits s JOIN expenses e ON s.expense_id = e.id "
             "WHERE e.trip_id = ? AND s.member_id = ? AND s.is_participant = 1",
             (trip_id, mid),
-        ).fetchone()
-        total_consumed = consumed_row["total"]
+        ).fetchone()[0]
 
-        # Put In = Initial Contribution + Personal Expenses Paid
-        total_put_in = contribution + raw_paid
-        
-        # Net balance: What you've contributed overall minus what you've consumed
-        net = total_put_in - total_consumed
-        
-        # If this is the treasurer, we can also calculate total physical cash they hold
-        # Physical Pool = Total INITIAL contributions - Total POOL spending
+        # Calculate put_in based on role
+        if mid == treasurer_id:
+            # Treasurer: only personal_expense payments count as out-of-pocket
+            personal_paid = conn.execute(
+                "SELECT COALESCE(SUM(amount), 0) FROM expenses "
+                "WHERE trip_id = ? AND paid_by = ? AND type = 'personal_expense'",
+                (trip_id, mid),
+            ).fetchone()[0]
+            total_put_in = contribution + personal_paid
+        else:
+            # Non-Treasurer: ALL payments are out-of-pocket
+            total_put_in = contribution + raw_paid
+
+        # Net balance = what you put in - what you consumed
+        net = round(total_put_in - total_consumed, 2)
+
+        # Treasurer's physical cash on hand
         cash_held = 0
         if mid == treasurer_id:
-            pool_spent = conn.execute(
+            all_pool_spent = conn.execute(
                 "SELECT COALESCE(SUM(amount), 0) FROM expenses "
                 "WHERE trip_id = ? AND type = 'pool_expense'",
                 (trip_id,)
             ).fetchone()[0]
-            cash_held = pool_collected - pool_spent
+            cash_held = round(pool_initial - all_pool_spent, 2)
 
-        net = round(net, 2)
-
-        try:
-            balances[mid] = {
-                "member_id": mid,
-                "name": name,
-                "contribution": contribution,
-                "total_paid": raw_paid,       # Personal out-of-pocket payments
-                "total_put_in": total_put_in, # Initial + Personal
-                "total_consumed": total_consumed,
-                "net_balance": round(net, 2),
-                "cash_on_hand": cash_held,
-            }
-        except Exception:
-            balances[mid] = { "member_id": mid, "name": name, "error": True, "net_balance": 0 }
+        balances[mid] = {
+            "member_id": mid,
+            "name": name,
+            "contribution": contribution,
+            "total_paid": raw_paid,
+            "total_put_in": round(total_put_in, 2),
+            "total_consumed": round(total_consumed, 2),
+            "net_balance": net,
+            "cash_on_hand": max(cash_held, 0),
+            "pool_collected": round(pool_collected, 2),
+        }
 
     conn.close()
     return balances
+
 
 
 # ───────────────── Summary Stats ─────────────────
@@ -446,25 +463,22 @@ def get_trip_summary(trip_id):
         (trip_id,),
     ).fetchone()["total"]
 
-    # Calculate real-time stats based on current balances
+    # Get pool stats from balances (already computed correctly there)
     balances = get_balances(trip_id)
-    
-    if no_treasurer:
+
+    if not balances:
         pool_collected = 0
         pool_balance = 0
-    elif treasurer_id:
-        pool_collected = sum(b["contribution"] + b["total_paid"] for b in balances.values())
-        pool_initial = sum(b["contribution"] for b in balances.values())
-        pool_spent_by_treasurer = conn.execute(
-            "SELECT COALESCE(SUM(amount), 0) AS total FROM expenses "
-            "WHERE trip_id = ? AND paid_by = ? AND type = 'pool_expense'",
-            (trip_id, treasurer_id)
-        ).fetchone()["total"]
-        pool_balance = pool_initial - pool_spent_by_treasurer
-    else:
-        # Not chosen yet
-        pool_collected = sum(b["contribution"] for b in balances.values())
+    elif no_treasurer:
+        pool_collected = sum(b.get("contribution", 0) for b in balances.values())
         pool_balance = pool_collected
+    else:
+        # Use pool_collected from any balance entry (it's the same for all)
+        first_bal = next(iter(balances.values()))
+        pool_collected = first_bal.get("pool_collected", 0)
+        # Treasurer's cash_on_hand IS the pool_balance
+        treas_bal = balances.get(treasurer_id, {})
+        pool_balance = treas_bal.get("cash_on_hand", 0)
 
     categories = conn.execute(
         "SELECT category, SUM(amount) AS total FROM expenses "
