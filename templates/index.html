@@ -456,8 +456,8 @@ if ('serviceWorker' in navigator) {
             console.log('Deleted cache:', key);
         }
         // Register fresh SW
-        navigator.serviceWorker.register('/sw.js?v=25')
-            .then(reg => { reg.update(); console.log('SW v25 registered'); })
+        navigator.serviceWorker.register('/sw.js?v=26')
+            .then(reg => { reg.update(); console.log('SW v26 registered'); })
             .catch(err => console.log('SW failed', err));
     });
 }

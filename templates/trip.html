@@ -795,8 +795,8 @@ if ('serviceWorker' in navigator) {
         for (const reg of regs) { await reg.unregister(); }
         const keys = await caches.keys();
         for (const key of keys) { await caches.delete(key); }
-        navigator.serviceWorker.register('/sw.js?v=25')
-            .then(reg => { reg.update(); console.log('SW v25 registered'); })
+        navigator.serviceWorker.register('/sw.js?v=26')
+            .then(reg => { reg.update(); console.log('SW v26 registered'); })
             .catch(err => console.error('SW failed', err));
     });
 }

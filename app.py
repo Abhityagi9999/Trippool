@@ -38,25 +38,52 @@ def robots(): return send_from_directory('static', 'robots.txt')
 def sitemap(): return send_from_directory('static', 'sitemap.xml')
 
 @app.route('/sw.js')
-def sw(): return send_from_directory('static', 'sw-v25.js', mimetype='application/javascript')
+def sw(): return send_from_directory('static', 'sw-v26.js', mimetype='application/javascript')
 
 @app.route('/manifest.json')
 def manifest(): return send_from_directory('static', 'manifest.json')
 
 
+@app.errorhandler(404)
+def handle_404(e):
+    if request.path.startswith('/api/'):
+        return jsonify({"error": "Not found"}), 404
+    return redirect(url_for('login'))
+
 @app.errorhandler(500)
 def handle_500(e):
     import traceback
     err_str = str(e).lower()
-    # If it's a DB lock, return 503 (Service Unavailable / Retry Later)
-    if "locked" in err_str:
+    if "locked" in err_str or "busy" in err_str:
         return jsonify({
-            "error": "Database Busy", 
-            "message": "The system is currently handling another request. Please try again in a moment.",
+            "error": "Database Busy",
+            "message": "System is handling another request. Please try again.",
             "retry_after": 1
         }), 503
-    
-    return jsonify({"error": "Internal Server Error", "debug": str(e), "traceback": traceback.format_exc()}), 500
+    if request.path.startswith('/api/'):
+        return jsonify({"error": "Server error", "detail": str(e)}), 500
+    return redirect(url_for('login'))
+
+@app.before_request
+def validate_session():
+    """Check that the session's user_id still exists in DB.
+    On Render free tier, /tmp/ DB gets wiped on sleep - this clears stale sessions gracefully."""
+    uid = session.get('user_id')
+    if uid:
+        try:
+            import sqlite3
+            conn = models.get_db()
+            row = conn.execute("SELECT id FROM users WHERE id = ?", (uid,)).fetchone()
+            conn.close()
+            if not row:
+                # DB was wiped (Render restart) - clear stale session and redirect to login
+                session.clear()
+                if request.path.startswith('/api/'):
+                    from flask import abort
+                    abort(401)
+                return redirect(url_for('login'))
+        except Exception:
+            pass  # Don't block request on validation error
 
 
 # ═══════════════════════════════════════════════════
