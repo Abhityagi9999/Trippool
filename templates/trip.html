@@ -294,11 +294,12 @@ function rBals(){
     const el=document.getElementById('bals');
     const elS=document.getElementById('settBals');
     const html = B.map(b=>{
-        const putIn = b.contribution + b.total_paid;
+        const putIn = b.total_put_in || (b.contribution + (b.total_paid||0));
         const net = b.net_balance;
         const isTreas = S.treasurer_id === b.member_id;
         const treasIcon = isTreas ? ' <span title="Trip Treasurer 👑" style="color:#fbbf24;margin-left:4px">👑</span>' : '';
-        const cashHeldHtml = (isTreas && b.cash_on_hand > 0) ? `<div style="font-size:0.65rem;font-weight:700;color:var(--t2);margin-top:6px;background:rgba(251,191,36,0.1);padding:4px 8px;border-radius:6px;border:1px solid rgba(251,191,36,0.2);display:inline-block">💰 Holding Funds: ₹${fmt(b.cash_on_hand)}</div>` : '';
+        const personalPaid = b.total_paid || 0;
+        const cashHeldHtml = (isTreas && b.cash_on_hand != null) ? `<div style="font-size:0.65rem;font-weight:700;color:${b.cash_on_hand > 0 ? '#d97706' : '#ef4444'};margin-top:6px;background:${b.cash_on_hand > 0 ? 'rgba(251,191,36,0.1)' : 'rgba(239,68,68,0.1)'};padding:4px 8px;border-radius:6px;border:1px solid ${b.cash_on_hand > 0 ? 'rgba(251,191,36,0.2)' : 'rgba(239,68,68,0.2)'};display:inline-block">💰 Pool Cash: ₹${fmt(b.cash_on_hand)}</div>` : '';
 
         return `<div class="bal ${net>=0?'pos':'neg'}" style="cursor:pointer;transition:transform 0.1s, background 0.2s;padding-bottom:12px" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background=''" onclick="showMemberHistory(${b.member_id})">
             <div style="flex:1">
@@ -307,7 +308,7 @@ function rBals(){
                     <button style="background:none;border:none;cursor:pointer;opacity:0.5;font-size:0.85rem;margin-left:2px" onclick="event.stopPropagation();editPool(${b.member_id}, ${b.contribution})" title="Edit Pool Contribution">✏️</button>
                 </div>
                 <div class="bal-sub" style="margin-top:6px;line-height:1.4">
-                    <span style="color:var(--t1);font-weight:500">Put In: ₹${fmt(putIn)}</span> <span style="font-size:0.7em;opacity:0.6">(₹${fmt(b.contribution)} Pool + ₹${fmt(b.total_paid)} Paid)</span><br>
+                    <span style="color:var(--t1);font-weight:500">Put In: ₹${fmt(putIn)}</span> <span style="font-size:0.7em;opacity:0.6">(₹${fmt(b.contribution)} Pool${personalPaid > 0 ? ` + ₹${fmt(personalPaid)} Personal` : ''})</span><br>
                     <span style="color:var(--t2);">➖ Used: ₹${fmt(b.total_consumed)}</span>
                 </div>
                 ${cashHeldHtml}
