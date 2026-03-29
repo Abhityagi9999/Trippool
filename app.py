@@ -16,7 +16,15 @@ app.permanent_session_lifetime = timedelta(days=365)
 CORS(app)
 
 # Initialise the database on first run
-models.init_db()
+try:
+    print("DEBUG: Starting init_db()")
+    models.init_db()
+    print("DEBUG: Finished init_db() successfully")
+except Exception as e:
+    import sys
+    import traceback
+    sys.stderr.write(f"CRITICAL ERROR during init_db: {str(e)}\n")
+    traceback.print_exc(file=sys.stderr)
 
 @app.after_request
 def add_header(r):
@@ -33,7 +41,7 @@ def robots(): return send_from_directory('static', 'robots.txt')
 def sitemap(): return send_from_directory('static', 'sitemap.xml')
 
 @app.route('/sw.js')
-def sw(): return send_from_directory('static', 'sw-v23.js', mimetype='application/javascript')
+def sw(): return send_from_directory('static', 'sw-v24.js', mimetype='application/javascript')
 
 @app.route('/manifest.json')
 def manifest(): return send_from_directory('static', 'manifest.json')

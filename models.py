@@ -21,6 +21,22 @@ def get_db():
     return conn
 
 
+def ensure_column(table_name, column_def):
+    """Safely add a column if it doesn't exist using PRAGMA checks."""
+    conn = get_db()
+    col_name = column_def.split()[0]
+    cursor = conn.execute(f"PRAGMA table_info({table_name})")
+    columns = [row[1] for row in cursor.fetchall()]
+    if col_name not in columns:
+        try:
+            conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_def}")
+            conn.commit()
+            print(f"DEBUG: Added column {col_name} to {table_name}")
+        except Exception as e:
+            print(f"DEBUG: Failed to add column {col_name} to {table_name}: {e}")
+    conn.close()
+
+
 def init_db():
     """Create all tables if they don't exist."""
     conn = get_db()
@@ -88,26 +104,13 @@ def init_db():
     );
     """)
 
-    # Attempt to add columns to handle legacy databases gracefully
-    for table_action in [
-        ("trips", "ADD COLUMN treasurer_id INTEGER DEFAULT NULL"),
-        ("trips", "ADD COLUMN owner_id INTEGER DEFAULT NULL"),
-        ("members", "ADD COLUMN initial_contribution REAL DEFAULT 0"),
-        ("expenses", "ADD COLUMN type TEXT DEFAULT 'pool_expense'"),
-        ("expenses", "ADD COLUMN category TEXT DEFAULT 'General'"),
-        ("users", "ADD COLUMN password TEXT DEFAULT NULL")
-    ]:
-        try:
-            conn.execute(f"ALTER TABLE {table_action[0]} {table_action[1]}")
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass # Column likely already exists
-
-    # Legacy fallback: Ensure password column exists if not present
-    try:
-        conn.execute("ALTER TABLE users ADD COLUMN password TEXT DEFAULT NULL")
-    except sqlite3.OperationalError:
-        pass
+    # Ensure all legacy columns exist across all tables
+    ensure_column("trips", "treasurer_id INTEGER DEFAULT NULL")
+    ensure_column("trips", "owner_id INTEGER DEFAULT NULL")
+    ensure_column("members", "initial_contribution REAL DEFAULT 0")
+    ensure_column("expenses", "type TEXT DEFAULT 'pool_expense'")
+    ensure_column("expenses", "category TEXT DEFAULT 'General'")
+    ensure_column("users", "password TEXT DEFAULT NULL")
     conn.execute("PRAGMA foreign_keys = ON")
 
     conn.commit()
