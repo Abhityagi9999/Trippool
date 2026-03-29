@@ -467,9 +467,12 @@ def get_balances(trip_id):
             # If treasurer pool_expenses exceed pool_available, they paid the overflow from pocket
             extra_from_pocket = max(0, treas_pool_exp - pool_available)
 
-            # Pool Collected = all money committed to the pool
-            # = initial contributions + treasurer's personal payments + any non-treas payments
-            pool_collected = pool_initial + non_treas_paid + treas_personal
+            # Pool Collected = money physically pooled/committed:
+            # = initial contributions
+            # + treasurer's personal expenses (from own pocket, shared with group)
+            # + any excess pool expenses treasurer funded from pocket (overflow)
+            # Note: non_treas_paid are DIRECT payments - NOT pool money
+            pool_collected = pool_initial + treas_personal + extra_from_pocket
 
             # Treasurer's cash on hand = unspent pool money
             cash_on_hand = max(pool_available - treas_pool_exp, 0)
