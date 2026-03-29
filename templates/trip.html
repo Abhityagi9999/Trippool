@@ -14,7 +14,48 @@
     <link rel="manifest" href="/static/manifest.json">
     <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
     <link rel="stylesheet" href="/static/css/index.css?v=17">
-    <style>.hidden{display:none !important}</style>
+    <style>
+    .hidden{display:none !important}
+    /* ═══ HINTS BAR ═══ */
+    .hints-bar{
+        position:fixed;bottom:69px;left:0;right:0;z-index:94;
+        background:rgba(6,11,24,0.94);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+        border-top:1px solid rgba(255,255,255,0.06);
+        padding:7px 12px;display:flex;align-items:center;gap:8px;
+        overflow:hidden;
+    }
+    .hints-label{
+        font-size:.58rem;font-weight:800;color:var(--t3);
+        white-space:nowrap;letter-spacing:.07em;text-transform:uppercase;
+        flex-shrink:0;opacity:.8;
+    }
+    .hints-divider{
+        width:1px;height:18px;background:rgba(255,255,255,0.08);flex-shrink:0;
+    }
+    .hints-scroll{
+        display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;
+        flex:1;-webkit-overflow-scrolling:touch;padding:2px 0;
+    }
+    .hints-scroll::-webkit-scrollbar{display:none}
+    .hint-chip{
+        display:inline-flex;align-items:center;gap:4px;
+        padding:5px 11px;border-radius:9999px;
+        font-size:.67rem;font-weight:600;font-family:inherit;
+        white-space:nowrap;cursor:pointer;border:1px solid;
+        transition:all .18s;flex-shrink:0;
+        -webkit-tap-highlight-color:transparent;
+    }
+    .hint-chip .hc-emoji{font-size:.75rem}
+    .hint-chip.simple{background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.22);color:#34d399}
+    .hint-chip.simple:hover,.hint-chip.simple:active{background:rgba(52,211,153,.2);border-color:rgba(52,211,153,.5);transform:scale(1.04)}
+    .hint-chip.split{background:rgba(167,139,250,.08);border-color:rgba(167,139,250,.22);color:#a78bfa}
+    .hint-chip.split:hover,.hint-chip.split:active{background:rgba(167,139,250,.2);border-color:rgba(167,139,250,.5);transform:scale(1.04)}
+    .hint-chip.excl{background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.22);color:#fbbf24}
+    .hint-chip.excl:hover,.hint-chip.excl:active{background:rgba(251,191,36,.2);border-color:rgba(251,191,36,.5);transform:scale(1.04)}
+    .hint-chip.personal{background:rgba(244,114,182,.08);border-color:rgba(244,114,182,.22);color:#f472b6}
+    .hint-chip.personal:hover,.hint-chip.personal:active{background:rgba(244,114,182,.2);border-color:rgba(244,114,182,.5);transform:scale(1.04)}
+    .container{padding-bottom:148px}
+    </style>
 
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
@@ -104,11 +145,17 @@
     </div>
 </div>
 
+<!-- Hints Bar -->
+<div id="hintsBar" class="hints-bar" style="display:none">
+    <div class="hints-label">💡 Try</div>
+    <div class="hints-divider"></div>
+    <div class="hints-scroll" id="hintsScroll"></div>
+</div>
 <!-- Input Bar -->
 <div class="input-bar">
     <div class="input-bar-inner">
         <div class="lang-toggle" id="langT" onclick="toggleLang()" title="Switch Language (English / Hindi)">EN</div>
-        <input id="ai" placeholder='Say "I paid 500 for drinks"' autocomplete="off">
+        <input id="ai" placeholder='I paid 500 for food...' autocomplete="off">
         <button class="clear-btn" id="cl">✖</button>
         <button class="mic-btn" id="mic">🎤</button>
         <button class="send-btn" id="snd">➤</button>
@@ -421,11 +468,13 @@ function renderCoordChips(){
 
     const chosen = coordId !== null;
     const aiBar = document.querySelector('.input-bar');
+    const hintsBar = document.getElementById('hintsBar');
     const addBtn = document.querySelector('.btn-g[onclick="openExp()"]');
     const coordHeader = document.querySelector('.coord-header');
     
     if(!chosen) {
         if(aiBar) aiBar.style.display = 'none';
+        if(hintsBar) hintsBar.style.display = 'none';
         if(addBtn) addBtn.style.display = 'none';
         if(coordHeader) {
             coordHeader.style.border = '2px solid var(--red)';
@@ -436,6 +485,7 @@ function renderCoordChips(){
         }
     } else {
         if(aiBar) aiBar.style.display = 'flex';
+        if(hintsBar) hintsBar.style.display = 'flex';
         if(addBtn) addBtn.style.display = 'inline-block';
         if(coordHeader) {
             coordHeader.style.border = '1px solid rgba(129,140,248,.2)';
@@ -786,7 +836,71 @@ function generatePDF() {
     });
 }
 
+// ═══ HINTS BAR ═══
+const HINT_CHIPS = [
+    // 🟢 Simple – equal split (EN + HI)
+    { type:'simple',  emoji:'👥', label:'Equal split',       full:'I paid 800 for dinner' },
+    { type:'simple',  emoji:'🍽️', label:'Sabne barabar',     full:'maine 800 ka khana diya, sabne barabar' },
+    // 🟣 Custom amounts (EN + HI)
+    { type:'split',   emoji:'✂️', label:'Custom amounts',    full:'1000 food - A 100, B 200, C 300, D 400' },
+    { type:'split',   emoji:'🔢', label:'Alag alag amount',  full:'1000 ka khana - A ne 100, B ne 200, C ne 300, D ne 400 khaya' },
+    // 🟡 Excluded member (EN + HI)
+    { type:'excl',    emoji:'🚫', label:'Someone skipped',   full:"600 dinner, A didn't eat" },
+    { type:'excl',    emoji:'❌', label:'Nahi khaya',        full:'600 ka dinner, A ne nahi khaya' },
+    // 🟢 Partial participants
+    { type:'simple',  emoji:'🚗', label:'Only some joined',  full:'Rahul paid 400 for cab, only A and B' },
+    { type:'simple',  emoji:'🚌', label:'Sirf kuch log',     full:'Priya ne 400 ki cab di, sirf A aur B aaye' },
+    // 🩷 Personal expense (EN + HI)
+    { type:'personal', emoji:'💳', label:'Personal expense', full:'I spent 200 on my snacks' },
+    { type:'personal', emoji:'🧾', label:'Apne liye',        full:'maine 200 apne coffee ke liye diye' },
+];
+
+function initHints() {
+    const el = document.getElementById('hintsScroll');
+    if (!el) return;
+    el.innerHTML = HINT_CHIPS.map((h, i) =>
+        `<button class="hint-chip ${h.type}" onclick="useHint(HINT_CHIPS[${i}].full)" title="${h.full.replace(/"/g,'&quot;')}">`+
+        `<span class="hc-emoji">${h.emoji}</span>${h.label}</button>`
+    ).join('');
+}
+
+function useHint(text) {
+    const inp = document.getElementById('ai');
+    inp.value = text;
+    inp.focus();
+    inp.style.borderColor = 'var(--brd-a)';
+    inp.style.boxShadow = '0 0 0 3px rgba(129,140,248,.1)';
+    setTimeout(() => { inp.style.borderColor=''; inp.style.boxShadow=''; }, 1200);
+    document.getElementById('cl').style.display = 'block';
+}
+
+// Rotating placeholder
+const ROTATE_PH = [
+    'I paid 500 for food...',
+    'maine 800 ka khana khaya...',
+    '1000 food – A 100, B 200, C 300, D 400...',
+    '600 ka dinner, A ne nahi khaya...',
+    'Rahul paid 300 for cab, only A and B...',
+    'I spent 200 on my snacks (personal)...',
+    '1000 ka khana – A ne 100, B ne 200 khaya...',
+    "800 dinner, A didn't eat...",
+];
+let _phIdx = 0;
+setInterval(() => {
+    const inp = document.getElementById('ai');
+    if (inp && !inp.value && document.activeElement !== inp) {
+        _phIdx = (_phIdx + 1) % ROTATE_PH.length;
+        inp.style.transition = 'opacity 0.3s';
+        inp.style.opacity = '0.4';
+        setTimeout(() => {
+            inp.placeholder = ROTATE_PH[_phIdx];
+            inp.style.opacity = '1';
+        }, 280);
+    }
+}, 2800);
+
 init();
+initHints();
 </script>
 <script>
 if ('serviceWorker' in navigator) {
