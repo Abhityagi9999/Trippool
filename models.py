@@ -8,9 +8,9 @@ import os
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "trippool.db")
+DB_PATH = os.path.join(os.path.dirname(__file__), "trippool_v23.db")
 if os.environ.get('VERCEL') or os.environ.get('RENDER'):
-    DB_PATH = "/tmp/trippool.db"
+    DB_PATH = "/tmp/trippool_v23.db"
 
 
 def get_db():
@@ -408,16 +408,19 @@ def get_balances(trip_id):
 
         net = round(net, 2)
 
-        balances[mid] = {
-            "member_id": mid,
-            "name": name,
-            "contribution": contribution,
-            "total_paid": raw_paid,       # Personal out-of-pocket payments
-            "total_put_in": total_put_in, # Initial + Personal
-            "total_consumed": total_consumed,
-            "net_balance": round(net, 2),
-            "cash_on_hand": cash_held,
-        }
+        try:
+            balances[mid] = {
+                "member_id": mid,
+                "name": name,
+                "contribution": contribution,
+                "total_paid": raw_paid,       # Personal out-of-pocket payments
+                "total_put_in": total_put_in, # Initial + Personal
+                "total_consumed": total_consumed,
+                "net_balance": round(net, 2),
+                "cash_on_hand": cash_held,
+            }
+        except Exception:
+            balances[mid] = { "member_id": mid, "name": name, "error": True, "net_balance": 0 }
 
     conn.close()
     return balances
