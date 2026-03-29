@@ -474,18 +474,30 @@ def get_balances(trip_id):
 
             # Calculate put_in based on role
             if mid == treasurer_id:
-                # Treasurer: only personal_expense payments count as out-of-pocket
+                # Treasurer's real out-of-pocket spending:
+                # - initial_contribution (own money into pool)
+                # - personal_expense payments (always from own pocket)
+                # - pool_expense payments that EXCEED pool balance (from own pocket)
                 personal_paid = conn.execute(
                     "SELECT COALESCE(SUM(amount), 0) FROM expenses "
                     "WHERE trip_id = ? AND paid_by = ? AND type = 'personal_expense'",
                     (trip_id, mid),
                 ).fetchone()[0]
-                total_put_in = contribution + personal_paid
+                pool_expense_paid = conn.execute(
+                    "SELECT COALESCE(SUM(amount), 0) FROM expenses "
+                    "WHERE trip_id = ? AND paid_by = ? AND type = 'pool_expense'",
+                    (trip_id, mid),
+                ).fetchone()[0]
+                # Pool money from others that treasurer received
+                pool_from_others = pool_initial - contribution
+                # How much of pool_expense exceeded the pool?
+                extra_from_pocket = max(0, pool_expense_paid - pool_initial)
+                total_put_in = contribution + extra_from_pocket + personal_paid
             else:
                 # Non-Treasurer: ALL payments are out-of-pocket
                 total_put_in = contribution + raw_paid
 
-            # Net balance = what you put in - what you consumed
+            # Net balance = what you spent from wallet - what you consumed
             net = round(total_put_in - total_consumed, 2)
 
             # Treasurer's physical cash on hand
