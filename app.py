@@ -47,6 +47,15 @@ def manifest(): return send_from_directory('static', 'manifest.json')
 @app.errorhandler(500)
 def handle_500(e):
     import traceback
+    err_str = str(e).lower()
+    # If it's a DB lock, return 503 (Service Unavailable / Retry Later)
+    if "locked" in err_str:
+        return jsonify({
+            "error": "Database Busy", 
+            "message": "The system is currently handling another request. Please try again in a moment.",
+            "retry_after": 1
+        }), 503
+    
     return jsonify({"error": "Internal Server Error", "debug": str(e), "traceback": traceback.format_exc()}), 500
 
 

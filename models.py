@@ -5,6 +5,8 @@ Uses raw SQLite for simplicity and zero external deps.
 
 import sqlite3
 import os
+import time
+import functools
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -15,12 +17,32 @@ if os.environ.get('VERCEL') or os.environ.get('RENDER'):
 
 def get_db():
     """Return a new database connection with row_factory."""
-    conn = sqlite3.connect(DB_PATH, timeout=10, check_same_thread=False)
+    conn = sqlite3.connect(DB_PATH, timeout=20, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     if not os.environ.get('RENDER'):
         conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+
+def db_retry(max_retries=5, delay=0.1):
+    """Decorator to retry DB operations if locked."""
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            last_err = None
+            for i in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except sqlite3.OperationalError as e:
+                    if "locked" in str(e).lower():
+                        last_err = e
+                        time.sleep(delay * (2 ** i)) # Exponential backoff
+                        continue
+                    raise e
+            raise last_err
+        return wrapper
+    return decorator
 
 
 def _ensure_column(conn, table_name, column_def):
@@ -31,92 +53,98 @@ def _ensure_column(conn, table_name, column_def):
     if col_name not in columns:
         try:
             conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_def}")
-            conn.commit()
         except Exception:
             pass
 
 
+@db_retry()
 def init_db():
-    """Create all tables if they don't exist."""
+    """Create all tables if they don't exist. Handled as a single retryable transaction."""
     conn = get_db()
-    cur = conn.cursor()
+    try:
+        cur = conn.cursor()
+        cur.execute("BEGIN IMMEDIATE") # Lock for writing immediately
+        cur.executescript("""
+        CREATE TABLE IF NOT EXISTS users (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            username    TEXT    NOT NULL,
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+            password    TEXT    DEFAULT NULL
+        );
 
-    cur.executescript("""
-    CREATE TABLE IF NOT EXISTS users (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        username    TEXT    NOT NULL, -- No UNIQUE here to allow the manual migration below if needed, but we'll include password
-        created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-        password    TEXT    DEFAULT NULL
-    );
+        CREATE TABLE IF NOT EXISTS trips (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_id    INTEGER,
+            name        TEXT    NOT NULL,
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+        );
 
-    CREATE TABLE IF NOT EXISTS trips (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        owner_id    INTEGER,
-        name        TEXT    NOT NULL,
-        created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
-    );
+        CREATE TABLE IF NOT EXISTS members (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            trip_id               INTEGER NOT NULL,
+            name                  TEXT    NOT NULL,
+            initial_contribution  REAL    NOT NULL DEFAULT 0,
+            FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
+            UNIQUE(trip_id, name)
+        );
 
-    CREATE TABLE IF NOT EXISTS members (
-        id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-        trip_id               INTEGER NOT NULL,
-        name                  TEXT    NOT NULL,
-        initial_contribution  REAL    NOT NULL DEFAULT 0,
-        FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
-        UNIQUE(trip_id, name)
-    );
+        CREATE TABLE IF NOT EXISTS expenses (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            trip_id     INTEGER NOT NULL,
+            paid_by     INTEGER NOT NULL,
+            amount      REAL    NOT NULL,
+            title       TEXT    NOT NULL,
+            category    TEXT    NOT NULL DEFAULT 'General',
+            type        TEXT    NOT NULL DEFAULT 'pool_expense',
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
+            FOREIGN KEY (paid_by) REFERENCES members(id)
+        );
 
-    CREATE TABLE IF NOT EXISTS expenses (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        trip_id     INTEGER NOT NULL,
-        paid_by     INTEGER NOT NULL,
-        amount      REAL    NOT NULL,
-        title       TEXT    NOT NULL,
-        category    TEXT    NOT NULL DEFAULT 'General',
-        type        TEXT    NOT NULL DEFAULT 'pool_expense',
-        created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-        FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
-        FOREIGN KEY (paid_by) REFERENCES members(id)
-    );
+        CREATE TABLE IF NOT EXISTS splits (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            expense_id      INTEGER NOT NULL,
+            member_id       INTEGER NOT NULL,
+            amount_consumed REAL    NOT NULL DEFAULT 0,
+            is_participant  INTEGER NOT NULL DEFAULT 1,
+            FOREIGN KEY (expense_id) REFERENCES expenses(id) ON DELETE CASCADE,
+            FOREIGN KEY (member_id) REFERENCES members(id)
+        );
 
-    CREATE TABLE IF NOT EXISTS splits (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        expense_id      INTEGER NOT NULL,
-        member_id       INTEGER NOT NULL,
-        amount_consumed REAL    NOT NULL DEFAULT 0,
-        is_participant  INTEGER NOT NULL DEFAULT 1,
-        FOREIGN KEY (expense_id) REFERENCES expenses(id) ON DELETE CASCADE,
-        FOREIGN KEY (member_id) REFERENCES members(id)
-    );
+        CREATE TABLE IF NOT EXISTS payments (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            trip_id         INTEGER NOT NULL,
+            from_member_id  INTEGER NOT NULL,
+            to_member_id    INTEGER NOT NULL,
+            amount          REAL    NOT NULL,
+            settled         INTEGER NOT NULL DEFAULT 0,
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
+            FOREIGN KEY (from_member_id) REFERENCES members(id),
+            FOREIGN KEY (to_member_id) REFERENCES members(id)
+        );
+        """)
 
-    CREATE TABLE IF NOT EXISTS payments (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        trip_id         INTEGER NOT NULL,
-        from_member_id  INTEGER NOT NULL,
-        to_member_id    INTEGER NOT NULL,
-        amount          REAL    NOT NULL,
-        settled         INTEGER NOT NULL DEFAULT 0,
-        created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
-        FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
-        FOREIGN KEY (from_member_id) REFERENCES members(id),
-        FOREIGN KEY (to_member_id) REFERENCES members(id)
-    );
-    """)
+        # Ensure columns
+        _ensure_column(conn, "trips", "treasurer_id INTEGER DEFAULT NULL")
+        _ensure_column(conn, "trips", "owner_id INTEGER DEFAULT NULL")
+        _ensure_column(conn, "members", "initial_contribution REAL DEFAULT 0")
+        _ensure_column(conn, "expenses", "type TEXT DEFAULT 'pool_expense'")
+        _ensure_column(conn, "expenses", "category TEXT DEFAULT 'General'")
+        _ensure_column(conn, "users", "password TEXT DEFAULT NULL")
 
-    # Ensure all legacy columns exist (using same connection)
-    _ensure_column(conn, "trips", "treasurer_id INTEGER DEFAULT NULL")
-    _ensure_column(conn, "trips", "owner_id INTEGER DEFAULT NULL")
-    _ensure_column(conn, "members", "initial_contribution REAL DEFAULT 0")
-    _ensure_column(conn, "expenses", "type TEXT DEFAULT 'pool_expense'")
-    _ensure_column(conn, "expenses", "category TEXT DEFAULT 'General'")
-    _ensure_column(conn, "users", "password TEXT DEFAULT NULL")
-
-    conn.commit()
-    conn.close()
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
 
 
 # ───────────────── User Registration/Login ────────
 
+@db_retry()
 def auth_user(username, password):
     """Logs a user in. Returns (user_id, error_msg)."""
     conn = get_db()
@@ -139,6 +167,7 @@ def auth_user(username, password):
     conn.close()
     return None, "Incorrect name or password"
 
+@db_retry()
 def register_user(username):
     """Create entirely new user with an auto-generated password."""
     import random
@@ -167,6 +196,7 @@ def get_user_by_name(username):
 
 # ───────────────── Trip CRUD ─────────────────
 
+@db_retry()
 def create_trip(name, owner_id=None):
     """Create a new trip and return its id."""
     conn = get_db()
@@ -198,6 +228,7 @@ def get_trip(trip_id):
     return dict(row) if row else None
 
 
+@db_retry()
 def set_trip_treasurer(trip_id, member_id):
     """Update the trip's elected treasurer."""
     conn = get_db()
@@ -206,6 +237,7 @@ def set_trip_treasurer(trip_id, member_id):
     conn.close()
 
 
+@db_retry()
 def delete_trip(trip_id):
     """Delete a trip and all cascaded data."""
     conn = get_db()
@@ -216,6 +248,7 @@ def delete_trip(trip_id):
 
 # ───────────────── Member CRUD ─────────────────
 
+@db_retry()
 def add_member(trip_id, name, contribution=0):
     """Add a member to a trip. Returns member id."""
     conn = get_db()
@@ -250,6 +283,7 @@ def get_member_by_name(trip_id, name):
     return dict(row) if row else None
 
 
+@db_retry()
 def update_member_contribution(member_id, contribution):
     """Update a member's base pool contribution."""
     conn = get_db()
@@ -263,6 +297,7 @@ def update_member_contribution(member_id, contribution):
 
 # ───────────────── Expense CRUD ─────────────────
 
+@db_retry()
 def add_expense(trip_id, paid_by, amount, title, category="General",
                 expense_type="pool_expense", splits=None):
     """
@@ -333,6 +368,7 @@ def get_expenses(trip_id):
     return expenses
 
 
+@db_retry()
 def delete_expense(expense_id):
     """Delete an expense and its splits."""
     conn = get_db()
