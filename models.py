@@ -413,14 +413,14 @@ def delete_expense(expense_id):
 
 def get_balances(trip_id):
     """
-    Calculate net balance for each member.
+    BALANCE LOGIC:
+    - pool_expense by Treasurer  -> from pool, Treasurer PutIn unchanged, Pool Collected unchanged
+    - personal_expense by ANYONE -> from own pocket, PutIn increases, Pool Collected increases
+    - non-Treasurer pays ANYTHING -> from own pocket, PutIn increases, Pool Collected increases
 
-    LOGIC:
-    - Treasurer paying pool_expense -> money comes from pool, Treasurer's put_in stays same
-    - Treasurer paying personal_expense -> out of pocket, Treasurer's put_in increases
-    - Non-Treasurer paying anything -> out of pocket, their put_in increases, pool grows
-    - put_in = initial_contribution + personal out-of-pocket payments
-    - net_balance = put_in - total_consumed
+    pool_available = pool_initial + non_treas_payments  (money the treasurer can draw from)
+    If treasurer pool_expenses > pool_available -> overflow is from their own pocket
+    net_balance = total_put_in - total_consumed  (positive=REMAINING, negative=OWES)
     """
     conn = get_db()
     try:
@@ -429,27 +429,62 @@ def get_balances(trip_id):
         no_treasurer = (raw_treasurer == -1)
         treasurer_id = None if no_treasurer else raw_treasurer
 
-        members = conn.execute(
-            "SELECT * FROM members WHERE trip_id = ?", (trip_id,)
-        ).fetchall()
+        members = conn.execute("SELECT * FROM members WHERE trip_id = ?", (trip_id,)).fetchall()
 
-        # Total initial pool from ALL members
+        # Initial contributions from all members
         pool_initial = conn.execute(
             "SELECT COALESCE(SUM(initial_contribution), 0) FROM members WHERE trip_id = ?",
             (trip_id,)
         ).fetchone()[0]
 
-        # Total expenses paid by non-treasurer members (these add to pool)
-        non_treas_paid = 0
         if treasurer_id:
+            # All payments made by non-treasurer members (adds to pool)
             non_treas_paid = conn.execute(
                 "SELECT COALESCE(SUM(amount), 0) FROM expenses "
                 "WHERE trip_id = ? AND paid_by != ?",
                 (trip_id, treasurer_id)
             ).fetchone()[0]
 
-        # Pool Collected = initial contributions + non-treasurer payments
-        pool_collected = pool_initial + non_treas_paid
+            # Treasurer's personal expenses (from own pocket, adds to pool)
+            treas_personal = conn.execute(
+                "SELECT COALESCE(SUM(amount), 0) FROM expenses "
+                "WHERE trip_id = ? AND paid_by = ? AND type = 'personal_expense'",
+                (trip_id, treasurer_id)
+            ).fetchone()[0]
+
+            # Treasurer's pool expenses (from pool money, NOT from pocket by default)
+            treas_pool_exp = conn.execute(
+                "SELECT COALESCE(SUM(amount), 0) FROM expenses "
+                "WHERE trip_id = ? AND paid_by = ? AND type = 'pool_expense'",
+                (trip_id, treasurer_id)
+            ).fetchone()[0]
+
+            # Pool available to treasurer = initial contributions + non-treas payments
+            # (NOT including treasurer's own personal payments - those are from their pocket)
+            pool_available = pool_initial + non_treas_paid
+
+            # If treasurer pool_expenses exceed pool_available, they paid the overflow from pocket
+            extra_from_pocket = max(0, treas_pool_exp - pool_available)
+
+            # Pool Collected = all money committed to the pool
+            # = initial contributions + non-treas payments + treasurer's personal payments
+            pool_collected = pool_initial + non_treas_paid + treas_personal
+
+            # Treasurer's cash on hand = unspent pool money
+            cash_on_hand = max(pool_available - treas_pool_exp, 0)
+
+        else:
+            # No treasurer: everyone is equal, all payments add to pool
+            non_treas_paid = conn.execute(
+                "SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE trip_id = ?",
+                (trip_id,)
+            ).fetchone()[0]
+            treas_personal = 0
+            treas_pool_exp = 0
+            pool_available = pool_initial
+            extra_from_pocket = 0
+            pool_collected = pool_initial + non_treas_paid
+            cash_on_hand = 0
 
         balances = {}
         for m in members:
@@ -457,14 +492,11 @@ def get_balances(trip_id):
             name = m["name"]
             contribution = m["initial_contribution"]
 
-            # Total paid by this member (ALL expenses)
             raw_paid = conn.execute(
-                "SELECT COALESCE(SUM(amount), 0) FROM expenses "
-                "WHERE trip_id = ? AND paid_by = ?",
+                "SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE trip_id = ? AND paid_by = ?",
                 (trip_id, mid),
             ).fetchone()[0]
 
-            # Total consumed by this member (their share of all expenses)
             total_consumed = conn.execute(
                 "SELECT COALESCE(SUM(s.amount_consumed), 0) "
                 "FROM splits s JOIN expenses e ON s.expense_id = e.id "
@@ -472,43 +504,16 @@ def get_balances(trip_id):
                 (trip_id, mid),
             ).fetchone()[0]
 
-            # Calculate put_in based on role
             if mid == treasurer_id:
-                # Treasurer's real out-of-pocket spending:
-                # - initial_contribution (own money into pool)
-                # - personal_expense payments (always from own pocket)
-                # - pool_expense payments that EXCEED pool balance (from own pocket)
-                personal_paid = conn.execute(
-                    "SELECT COALESCE(SUM(amount), 0) FROM expenses "
-                    "WHERE trip_id = ? AND paid_by = ? AND type = 'personal_expense'",
-                    (trip_id, mid),
-                ).fetchone()[0]
-                pool_expense_paid = conn.execute(
-                    "SELECT COALESCE(SUM(amount), 0) FROM expenses "
-                    "WHERE trip_id = ? AND paid_by = ? AND type = 'pool_expense'",
-                    (trip_id, mid),
-                ).fetchone()[0]
-                # Pool money from others that treasurer received
-                pool_from_others = pool_initial - contribution
-                # How much of pool_expense exceeded the pool?
-                extra_from_pocket = max(0, pool_expense_paid - pool_initial)
-                total_put_in = contribution + extra_from_pocket + personal_paid
+                # Treasurer's put_in = initial + personal payments + any pool overflow from pocket
+                total_put_in = contribution + treas_personal + extra_from_pocket
+                member_cash = cash_on_hand
             else:
-                # Non-Treasurer: ALL payments are out-of-pocket
+                # Non-Treasurer: ALL their payments are out-of-pocket
                 total_put_in = contribution + raw_paid
+                member_cash = 0
 
-            # Net balance = what you spent from wallet - what you consumed
             net = round(total_put_in - total_consumed, 2)
-
-            # Treasurer's physical cash on hand
-            cash_held = 0
-            if mid == treasurer_id:
-                all_pool_spent = conn.execute(
-                    "SELECT COALESCE(SUM(amount), 0) FROM expenses "
-                    "WHERE trip_id = ? AND type = 'pool_expense'",
-                    (trip_id,)
-                ).fetchone()[0]
-                cash_held = round(pool_initial - all_pool_spent, 2)
 
             balances[mid] = {
                 "member_id": mid,
@@ -518,7 +523,7 @@ def get_balances(trip_id):
                 "total_put_in": round(total_put_in, 2),
                 "total_consumed": round(total_consumed, 2),
                 "net_balance": net,
-                "cash_on_hand": max(cash_held, 0),
+                "cash_on_hand": member_cash,
                 "pool_collected": round(pool_collected, 2),
             }
 
