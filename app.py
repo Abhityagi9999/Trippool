@@ -16,15 +16,21 @@ app.permanent_session_lifetime = timedelta(days=365)
 CORS(app)
 
 # Initialise the database on first run
-try:
-    print("DEBUG: Starting init_db()")
-    models.init_db()
-    print("DEBUG: Finished init_db() successfully")
-except Exception as e:
-    import sys
-    import traceback
-    sys.stderr.write(f"CRITICAL ERROR during init_db: {str(e)}\n")
-    traceback.print_exc(file=sys.stderr)
+_db_init_done = False
+@app.before_request
+def safe_init():
+    global _db_init_done
+    if not _db_init_done:
+        try:
+            print("DEBUG: Starting lazy init_db()")
+            models.init_db()
+            _db_init_done = True
+            print("DEBUG: Finished lazy init_db() successfully")
+        except Exception as e:
+            import sys
+            import traceback
+            sys.stderr.write(f"CRITICAL ERROR during lazy init_db: {str(e)}\n")
+            traceback.print_exc(file=sys.stderr)
 
 @app.after_request
 def add_header(r):
@@ -41,7 +47,7 @@ def robots(): return send_from_directory('static', 'robots.txt')
 def sitemap(): return send_from_directory('static', 'sitemap.xml')
 
 @app.route('/sw.js')
-def sw(): return send_from_directory('static', 'sw-v24.js', mimetype='application/javascript')
+def sw(): return send_from_directory('static', 'sw-v25.js', mimetype='application/javascript')
 
 @app.route('/manifest.json')
 def manifest(): return send_from_directory('static', 'manifest.json')

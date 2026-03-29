@@ -8,9 +8,9 @@ import os
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "trippool_v23.db")
+DB_PATH = os.path.join(os.path.dirname(__file__), "trippool_v25.db")
 if os.environ.get('VERCEL') or os.environ.get('RENDER'):
-    DB_PATH = "/tmp/trippool_v23.db"
+    DB_PATH = "/tmp/trippool_v25.db"
 
 
 def get_db():
