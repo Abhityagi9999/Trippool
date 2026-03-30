@@ -14,7 +14,9 @@ def test_parser():
         "Split 500 for taxi between B and C",
         "D spent 300 on drinks but A didn't drink",
         "A ne 500 diye dinner ke liye jisme C nahi tha",
-        "B ne 1200 kharch kiye petrol bhara"
+        "B ne 1200 kharch kiye petrol bhara",
+        "a ne payment kri hai 500 ki hotel ki jisme d ko include mat karo",
+        "b ne 300 rupees deye khane ke"
     ]
     
     print("--- Trippool AI Parser Test ---")

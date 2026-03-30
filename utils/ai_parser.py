@@ -40,38 +40,44 @@ def parse_expense_text(text, member_names, current_user=None):
     if model:
         try:
             prompt = f"""
-            You are an expert expense parser for 'TripPool AI'. 
-            The input comes from a microphone and may contain phonetic errors, natural speech disfluencies, and mixed Hindi/English (Hinglish).
+            You are an expert natural language expense parser for 'TripPool'. 
+            The input comes from users typing or speaking. It can be entirely English, entirely Hindi, or mixed Hinglish.
+            Users will very commonly input things like "a ne payment kri hai 500 ki jisme d ko include mat karo", "b spent 300 on food", "A and B split 500".
             
             Input Text: "{text}"
             Trip Members: {', '.join(member_names)}
             Speaker (Me/I/Maine): {current_user or 'Unknown'}
             
-            TASKS:
-            1. Correct Speech-to-Text errors (e.g., 'page'->'paid', 'areas'->'Rs', 'D' might be heard as 'the' or 'di').
-            2. Identify Payer: If no name is given but user says 'I' or 'Maine', it's {current_user}.
-            3. Identify Exclusions: Look for Hindi negative intent. 
-               - Phrases like 'हमने' (We) mean everyone, BUT if followed by 'X ne nahi khaya' or 'X ko chhod kar', then X MUST be in the 'excluded' list.
-               - Detect 'nahi khaya', 'nhi khaya', 'exclude', 'mat dalo', 'chhod kar', 'nahi tha' in both Hindi script and Hinglish.
-            4. Identify Exact Splits: If specific amounts are mentioned for specific people (e.g., "100 ka A ne, 200 ka B ne khaya", "A's share is 150"), populate the 'exact_splits' object mapping "Member Name" to the numerical amount.
-               - IMPORTANT: The names in 'exact_splits' MUST perfectly match names from the Trip Members list. 
-               - Example: "1000 food - A 100, B 200" -> {{"A": 100.0, "B": 200.0}}
-            5. Identify Category and Total Amount (handles Devanagari numerals ५००=500).
+            CRITICAL INSTRUCTIONS:
+            1. NAMES ARE CASE INSENSITIVE. In the Input Text, single letters like 'a', 'b', 'c', 'd' or misspelled names are almost ALWAYS referring to the Trip Members 'A', 'B', 'C', 'D'. Identify them properly.
+            2. Payer: Who made the payment? (e.g. "a ne payment kri" -> Payer is 'A'. "maine diye" -> Payer is Speaker). Set to null if unknown.
+            3. Exclusions: If input says "jisme d ko include mat karo", "except B", "X ne nahi khaya" -> strictly add 'D', 'B', or 'X' to the 'excluded' array. Look for negative Hindi words like "mat", "nahi", "nhi", "chhod ke", "ni thaa".
+            4. Amount: Extract the total amount.
+            5. Category: Classify the expense into one of: Food, Travel, Stay, Shopping, Activity, Drinks, General. "Khane", "khana", "dinner" -> Food.
+            6. Title: Create a short 2-3 word logical English title from the input text intent (e.g., "Dinner Expense").
             
-            Return ONLY JSON:
+            Return ONLY a valid JSON object. No markdown formatting, no tick marks, just raw JSON:
             {{
               "amount": float,
-              "paid_by": "Name",
-              "title": "Title",
-              "category": "Food/Travel/Stay/Shopping/Activity/Drinks/General",
+              "paid_by": "Name" or null,
+              "title": "Short Title",
+              "category": "Food",
               "excluded": ["Name1"],
               "exact_splits": {{"Name1": 100.0}}
             }}
             """
             
-            response = model.generate_content(prompt)
+            # Use JSON response mime type if genai supports it (otherwise fallback safely)
+            try:
+                response = model.generate_content(prompt, generation_config=genai.types.GenerationConfig(response_mime_type="application/json"))
+                output_text = response.text
+            except Exception:
+                # older generator fallback
+                response = model.generate_content(prompt)
+                output_text = response.text
+                
             # Find JSON in response
-            json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+            json_match = re.search(r'\{.*\}', output_text, re.DOTALL)
             if json_match:
                 ai_res = json.loads(json_match.group(0))
                 
@@ -133,8 +139,8 @@ def _parse_regex(text, member_names, current_user=None):
         patterns = [
             rf"\b{re.escape(name_lower)}\s+paid\b",
             rf"\bpaid\s+by\s+{re.escape(name_lower)}\b",
-            # Hinglish: "X ne pay kiya", "X ne bill bhara", "X ne diye", "X ne pay kare", "X ne kharch kre"
-            rf"\b{re.escape(name_lower)}\s+ne\s+(?:diye|pay|kharch|bhara|bhare|diya|pay\s+kiya|kiya|kariya|kare|kre|krye)\b",
+            # Hinglish: "X ne pay kiya", "X ne bill bhara", "X ne diye", "X ne pay kare", "X ne kharch kre", "X ne payment kri"
+            rf"\b{re.escape(name_lower)}\s+ne\s+(?:diye|pay|kharch|bhara|bhare|diya|pay\s+kiya|kiya|kariya|kare|kre|krye|payment|deye)\b",
             rf"\b{re.escape(name_lower)}\s+ne\b", # Just "X ne ..."
             rf"\b{re.escape(name_lower)}\s+\d+",   # "Abhi 400"
             rf"\b{re.escape(name_lower)}\s+spent\b",
@@ -165,9 +171,12 @@ def _parse_regex(text, member_names, current_user=None):
             rf"\bwithout\s+{re.escape(name_lower)}\b",
             # Hinglish: "X ne nahi khaya", "X include nahi", "X khana nahi", "X nhi"
             # Allow optional "ne" and one optional word like "khana" in between
-            rf"\b{re.escape(name_lower)}\s+(?:ne\s+)?(?:\w+\s+)?(?:nahi|nhi|ni|nai|nay)\b",
+            rf"\b{re.escape(name_lower)}\s+(?:ko\s+)?(?:ne\s+)?(?:\w+\s+)?(?:nahi|nhi|ni|nai|nay|mat)\b",
+            rf"\b{re.escape(name_lower)}\s+ko\s+(?:include\s+)?mat\b",
             rf"\b{re.escape(name_lower)}\s+ko\s+chho[rd]e?kar\b",
             rf"\b{re.escape(name_lower)}\s+(?:include\s+)?mat\b",
+            rf"\bjisme\s+{re.escape(name_lower)}\s+(?:ko\s+)?(?:include\s+)?mat\b",
+            rf"\bjisme\s+{re.escape(name_lower)}\s+nahi\b"
         ]
         for pat in exclusion_patterns:
             if re.search(pat, text_lower):
@@ -200,7 +209,7 @@ def _parse_regex(text, member_names, current_user=None):
 
     # ── 5. Detect category ──
     category_map = {
-        "Food": ["food", "eat", "dinner", "lunch", "breakfast", "chai", "tea", "khana", "nashta", "biryani", "pizza", "burger", "party", "snacks", "maggi", "samosas?", "momo", "restaraunt", "dhaba", "खाना", "खाया", "नाश्ता", "चाय"],
+        "Food": ["food", "eat", "dinner", "lunch", "breakfast", "chai", "tea", "khana", "khane", "nashta", "biryani", "pizza", "burger", "party", "snacks", "maggi", "samosas?", "momo", "restaraunt", "dhaba", "खाना", "खाया", "नाश्ता", "चाय"],
         "Travel": ["cab", "taxi", "auto", "bus", "train", "flight", "petrol", "fuel", "travel", "ticket", "car", "gaadi", "toll", "diesel", "parking", "uber", "ola", "rickshaw", "गाड़ी", "किराया", "ऑटो", "टैक्सी"],
         "Stay": ["hotel", "room", "stay", "hostel", "accommodation", "checkin", "checkout", "rent", "होटल", "कमरा", "रुके"],
         "Shopping": ["shop", "shopping", "buy", "bought", "gift", "clothes", "mall", "kharida", "purchase", "ख़रीदा", "सामान"],
@@ -225,7 +234,7 @@ def _parse_regex(text, member_names, current_user=None):
     for m in member_names:
         clean_title = re.sub(rf"(?i)\b{re.escape(m)}\b", "", clean_title)
     
-    noise = ["paid", "ne", "diye", "kharch", "kiya", "kariya", "bhara", "bhare", "nhi", "nahi", "khaya", "tha", "chhodkar", "mat", "include", "exclude", "except", "without", "kare", "kre", "krye", "jisme", "isne", "usne", "kuch", "bhara", "dia", "diya"]
+    noise = ["paid", "ne", "diye", "kharch", "kiya", "kariya", "bhara", "bhare", "nhi", "nahi", "khaya", "tha", "chhodkar", "mat", "include", "exclude", "except", "without", "kare", "kre", "krye", "jisme", "isne", "usne", "kuch", "bhara", "dia", "diya", "ki", "ko", "hai", "kri", "payment", "rupees"]
     for word in noise:
         clean_title = re.sub(rf"(?i)\b{word}\b", "", clean_title)
     
