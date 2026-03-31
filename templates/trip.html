@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>{{ trip.name }} – Trippool (v1.25)</title>
+    <title>{{ trip.name }} – Trippool (v1.26)</title>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
@@ -81,15 +81,13 @@
             setTimeout(() => splash.style.display = 'none', 500);
         }, 800);
     });
-
-    // Native app cold-start behavior: redirect to dashboard if the browser tab is fresh
-    if (!sessionStorage.getItem('tp_app_active')) {
-        window.location.replace('/');
-    }
 </script>
 <div class="topbar">
-    <a href="/" class="topbar-back">← Back</a>
-    <span class="topbar-title" onclick="window.location.href='/'" style="cursor:pointer"><img src="/static/icons/logo.png" class="brand-logo">Trippool</span>
+    <a href="/?dashboard=1" class="topbar-back">← Back</a>
+    <div class="topbar-title" onclick="document.getElementById('tripDDS').classList.remove('hidden')" style="cursor:pointer; display:flex; align-items:center; gap:6px; max-width:60%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">
+        <span style="overflow:hidden; text-overflow:ellipsis; max-width:85%;">🏕️ {{ trip.name }}</span>
+        <span style="font-size:0.6rem;opacity:0.6;margin-left:4px">▼</span>
+    </div>
     <span style="width:40px"></span>
 </div>
 
@@ -222,6 +220,33 @@
         </div>
         <div class="tl" id="hTl" style="overflow-y:auto;flex:1;padding-right:4px"></div>
         <button class="btn btn-g btn-block mt-16" style="flex-shrink:0" onclick="closeH()">Close</button>
+    </div>
+</div>
+
+<!-- Trip Switcher Modal (Bottom Sheet over Dark Glass) -->
+<div class="ov hidden" id="tripDDS" style="z-index:900;" onclick="this.classList.add('hidden')">
+    <div class="modal" style="background:rgba(15,23,42,0.95); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); border:1px solid rgba(255,255,255,0.1); padding:24px; box-shadow:0 -10px 40px rgba(0,0,0,0.5); border-radius:var(--r) var(--r) 0 0;" onclick="event.stopPropagation()">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h3 style="margin:0; font-size:1.3rem; font-weight:700; color:#fff;">Select Activity</h3>
+            <button onclick="document.getElementById('tripDDS').classList.add('hidden')" style="background:rgba(255,255,255,0.1); border:none; border-radius:50%; width:32px; height:32px; color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:1.2rem; transition:0.2s;">&times;</button>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px; max-height:400px; overflow-y:auto; margin-bottom:12px; padding-right:4px;">
+            {% for t in user_trips %}
+                {% if t.id == trip.id %}
+                <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.05); padding:12px 16px; border-radius:12px; border:1px solid rgba(99,102,241,0.3);">
+                    <span style="font-size:1.05rem; color:#fff; font-weight:700; display:flex; align-items:center; gap:12px;">🏕️ {{ t.name }}</span>
+                    <span style="font-size:0.8rem; color:var(--accent); font-weight:600">Active</span>
+                </div>
+                {% else %}
+                <button onclick="window.location.href='/trip/{{ t.id }}'" style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.015); border:1px solid rgba(255,255,255,0.05); padding:12px 16px; color:var(--t2); font-weight:600; cursor:pointer; font-size:1.05rem; border-radius:12px; transition:0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.05)';this.style.color='var(--t1)'" onmouseout="this.style.background='rgba(255,255,255,0.015)';this.style.color='var(--t2)'">
+                    <span style="display:flex; align-items:center; gap:12px;max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><span style="filter:grayscale(1); opacity:0.8">🏕️</span> {{ t.name }}</span>
+                </button>
+                {% endif %}
+            {% endfor %}
+        </div>
+        <button onclick="window.location.href='/?dashboard=1'" style="width:100%; text-align:left; background:linear-gradient(135deg, rgba(99,102,241,0.1), rgba(168,85,247,0.1)); border:1px solid rgba(99,102,241,0.3); padding:14px 16px; color:var(--t1); font-weight:600; cursor:pointer; font-size:1rem; border-radius:12px; display:flex; align-items:center; gap:12px; transition:0.2s; margin-top:12px;" onmouseover="this.style.background='linear-gradient(135deg, rgba(99,102,241,0.2), rgba(168,85,247,0.2))'" onmouseout="this.style.background='linear-gradient(135deg, rgba(99,102,241,0.1), rgba(168,85,247,0.1))'">
+            <span style="font-size:1.3rem;">📋</span> Go to Dashboard <span style="font-size:0.8rem; opacity:0.8; font-weight:500">(Create New Trip)</span>
+        </button>
     </div>
 </div>
 

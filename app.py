@@ -38,7 +38,7 @@ def robots(): return send_from_directory('static', 'robots.txt')
 def sitemap(): return send_from_directory('static', 'sitemap.xml')
 
 @app.route('/sw.js')
-def sw(): return send_from_directory('static', 'sw-v26.js', mimetype='application/javascript')
+def sw(): return send_from_directory('static', 'sw-v27.js', mimetype='application/javascript')
 
 @app.route('/manifest.json')
 def manifest(): return send_from_directory('static', 'manifest.json')
@@ -138,6 +138,12 @@ def home():
     uid = session.get("user_id")
     if not uid:
         return redirect(url_for("login"))
+        
+    if not request.args.get('dashboard'):
+        trips = models.get_all_trips(uid)
+        if trips:
+            return redirect(url_for("trip_page", trip_id=trips[0]["id"]))
+            
     return render_template("index.html", username=session.get("username", "User"))
 
 
@@ -150,10 +156,16 @@ def offline():
 @app.route("/trip/<int:trip_id>")
 def trip_page(trip_id):
     """Trip dashboard page."""
+    uid = session.get("user_id")
+    if not uid:
+        return redirect(url_for("login"))
+        
     trip = models.get_trip(trip_id)
     if not trip:
         return "Trip not found", 404
-    return render_template("trip.html", trip=trip)
+        
+    user_trips = models.get_all_trips(uid)
+    return render_template("trip.html", trip=trip, user_trips=user_trips)
 
 
 # ═══════════════════════════════════════════════════
