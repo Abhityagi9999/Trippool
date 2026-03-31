@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>{{ trip.name }} – Trippool (v1.26)</title>
+    <title>{{ trip.name }} – Trippool (v1.27)</title>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
@@ -84,11 +84,13 @@
 </script>
 <div class="topbar">
     <a href="/?dashboard=1" class="topbar-back">← Back</a>
-    <div class="topbar-title" onclick="document.getElementById('tripDDS').classList.remove('hidden')" style="cursor:pointer; display:flex; align-items:center; gap:6px; max-width:60%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">
+    <div class="topbar-title" onclick="document.getElementById('tripDDS').classList.remove('hidden')" style="cursor:pointer; display:flex; align-items:center; gap:6px; max-width:45%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">
         <span style="overflow:hidden; text-overflow:ellipsis; max-width:85%;">🏕️ {{ trip.name }}</span>
         <span style="font-size:0.6rem;opacity:0.6;margin-left:4px">▼</span>
     </div>
-    <span style="width:40px"></span>
+    <a href="/?dashboard=1" style="display:flex; align-items:center; gap:4px; background:var(--glass); padding:6px 10px; border-radius:var(--pill); font-size:0.75rem; font-weight:600; color:var(--t1); text-decoration:none; border:1px solid var(--brd); transition:0.2s; white-space:nowrap;" onmouseover="this.style.background='var(--glass2)'" onmouseout="this.style.background='var(--glass)'" title="Go to Dashboard">
+        <span>📋</span> Dash
+    </a>
 </div>
 
 <div class="container">
