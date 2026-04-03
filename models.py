@@ -3,31 +3,69 @@ models.py – Database layer for TripPool AI
 Uses raw SQLite for simplicity and zero external deps.
 """
 
-import sqlite3
 import os
 import time
 import functools
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 
+import sqlite3
+try:
+    import psycopg2
+    from psycopg2.extras import DictCursor
+except ImportError:
+    psycopg2 = None
+
 DB_PATH = os.path.join(os.path.dirname(__file__), "trippool_v25.db")
 if os.environ.get('VERCEL') or os.environ.get('RENDER'):
     DB_PATH = "/tmp/trippool_v25.db"
 
+class DBConnection:
+    def __init__(self):
+        self.url = os.environ.get("DATABASE_URL")
+        self.is_pg = bool(self.url and self.url.startswith("postgres"))
+        
+        if self.is_pg:
+            if not psycopg2:
+                raise Exception("psycopg2 is not installed!")
+            self.conn = psycopg2.connect(self.url, cursor_factory=DictCursor)
+        else:
+            self.conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
+            self.conn.row_factory = sqlite3.Row
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute("PRAGMA busy_timeout = 30000")
+            self.conn.execute("PRAGMA foreign_keys = ON")
+
+    def execute(self, query, params=()):
+        if self.is_pg:
+            query = query.replace("?", "%s")
+        cursor = self.conn.cursor()
+        cursor.execute(query, params)
+        return cursor
+
+    def insert_and_get_id(self, query, params=()):
+        if self.is_pg:
+            query = query.replace("?", "%s")
+            query = query.strip()
+            if not query.upper().endswith("RETURNING ID"):
+                query += " RETURNING id"
+            cursor = self.conn.cursor()
+            cursor.execute(query, params)
+            row = cursor.fetchone()
+            return row['id'] if row else None
+        else:
+            cursor = self.conn.cursor()
+            cursor.execute(query, params)
+            return cursor.lastrowid
+
+    def commit(self):
+        self.conn.commit()
+
+    def close(self):
+        self.conn.close()
 
 def get_db():
-    """Return a new database connection with row_factory.
-
-    WAL mode + busy_timeout are the two critical settings that prevent
-    'database is locked' errors. WAL allows concurrent readers + 1 writer.
-    busy_timeout tells SQLite to wait (not crash) if the DB is briefly locked.
-    """
-    conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout = 30000")  # Wait up to 30s if locked
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    return DBConnection()
 
 
 def db_retry(max_retries=5, delay=0.2):
@@ -39,8 +77,8 @@ def db_retry(max_retries=5, delay=0.2):
             for attempt in range(max_retries):
                 try:
                     return func(*args, **kwargs)
-                except sqlite3.OperationalError as e:
-                    if "locked" in str(e).lower() or "busy" in str(e).lower():
+                except Exception as e:
+                    if "locked" in str(e).lower() or "busy" in str(e).lower() or "deadlock" in str(e).lower():
                         last_err = e
                         time.sleep(delay * (2 ** attempt))
                         continue
@@ -53,8 +91,13 @@ def db_retry(max_retries=5, delay=0.2):
 def _ensure_column(conn, table_name, column_def):
     """Safely add a column if it doesn't exist."""
     col_name = column_def.split()[0]
-    cursor = conn.execute(f"PRAGMA table_info({table_name})")
-    columns = [row[1] for row in cursor.fetchall()]
+    if conn.is_pg:
+        cursor = conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name=%s", (table_name,))
+        columns = [row[0] for row in cursor.fetchall()]
+    else:
+        cursor = conn.execute(f"PRAGMA table_info({table_name})")
+        columns = [row[1] for row in cursor.fetchall()]
+
     if col_name not in columns:
         try:
             conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_def}")
@@ -69,72 +112,140 @@ def init_db():
     try:
         # Use individual execute() calls - NOT executescript()
         # executescript() has implicit transaction behavior that causes locks
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                username    TEXT    NOT NULL,
-                created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-                password    TEXT    DEFAULT NULL
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS trips (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                owner_id    INTEGER,
-                name        TEXT    NOT NULL,
-                created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS members (
-                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-                trip_id               INTEGER NOT NULL,
-                name                  TEXT    NOT NULL,
-                initial_contribution  REAL    NOT NULL DEFAULT 0,
-                FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
-                UNIQUE(trip_id, name)
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS expenses (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                trip_id     INTEGER NOT NULL,
-                paid_by     INTEGER NOT NULL,
-                amount      REAL    NOT NULL,
-                title       TEXT    NOT NULL,
-                category    TEXT    NOT NULL DEFAULT 'General',
-                type        TEXT    NOT NULL DEFAULT 'pool_expense',
-                created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
-                FOREIGN KEY (paid_by) REFERENCES members(id)
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS splits (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                expense_id      INTEGER NOT NULL,
-                member_id       INTEGER NOT NULL,
-                amount_consumed REAL    NOT NULL DEFAULT 0,
-                is_participant  INTEGER NOT NULL DEFAULT 1,
-                FOREIGN KEY (expense_id) REFERENCES expenses(id) ON DELETE CASCADE,
-                FOREIGN KEY (member_id) REFERENCES members(id)
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS payments (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                trip_id         INTEGER NOT NULL,
-                from_member_id  INTEGER NOT NULL,
-                to_member_id    INTEGER NOT NULL,
-                amount          REAL    NOT NULL,
-                settled         INTEGER NOT NULL DEFAULT 0,
-                created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
-                FOREIGN KEY (from_member_id) REFERENCES members(id),
-                FOREIGN KEY (to_member_id) REFERENCES members(id)
-            )
-        """)
+        if conn.is_pg:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id          SERIAL PRIMARY KEY,
+                    username    TEXT    NOT NULL,
+                    created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    password    TEXT    DEFAULT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS trips (
+                    id          SERIAL PRIMARY KEY,
+                    owner_id    INTEGER,
+                    name        TEXT    NOT NULL,
+                    created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS members (
+                    id                    SERIAL PRIMARY KEY,
+                    trip_id               INTEGER NOT NULL,
+                    name                  TEXT    NOT NULL,
+                    initial_contribution  REAL    NOT NULL DEFAULT 0,
+                    FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
+                    UNIQUE(trip_id, name)
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS expenses (
+                    id          SERIAL PRIMARY KEY,
+                    trip_id     INTEGER NOT NULL,
+                    paid_by     INTEGER NOT NULL,
+                    amount      REAL    NOT NULL,
+                    title       TEXT    NOT NULL,
+                    category    TEXT    NOT NULL DEFAULT 'General',
+                    type        TEXT    NOT NULL DEFAULT 'pool_expense',
+                    created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
+                    FOREIGN KEY (paid_by) REFERENCES members(id)
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS splits (
+                    id              SERIAL PRIMARY KEY,
+                    expense_id      INTEGER NOT NULL,
+                    member_id       INTEGER NOT NULL,
+                    amount_consumed REAL    NOT NULL DEFAULT 0,
+                    is_participant  INTEGER NOT NULL DEFAULT 1,
+                    FOREIGN KEY (expense_id) REFERENCES expenses(id) ON DELETE CASCADE,
+                    FOREIGN KEY (member_id) REFERENCES members(id)
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS payments (
+                    id              SERIAL PRIMARY KEY,
+                    trip_id         INTEGER NOT NULL,
+                    from_member_id  INTEGER NOT NULL,
+                    to_member_id    INTEGER NOT NULL,
+                    amount          REAL    NOT NULL,
+                    settled         INTEGER NOT NULL DEFAULT 0,
+                    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
+                    FOREIGN KEY (from_member_id) REFERENCES members(id),
+                    FOREIGN KEY (to_member_id) REFERENCES members(id)
+                )
+            """)
+        else:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username    TEXT    NOT NULL,
+                    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+                    password    TEXT    DEFAULT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS trips (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    owner_id    INTEGER,
+                    name        TEXT    NOT NULL,
+                    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+                    FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS members (
+                    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                    trip_id               INTEGER NOT NULL,
+                    name                  TEXT    NOT NULL,
+                    initial_contribution  REAL    NOT NULL DEFAULT 0,
+                    FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
+                    UNIQUE(trip_id, name)
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS expenses (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    trip_id     INTEGER NOT NULL,
+                    paid_by     INTEGER NOT NULL,
+                    amount      REAL    NOT NULL,
+                    title       TEXT    NOT NULL,
+                    category    TEXT    NOT NULL DEFAULT 'General',
+                    type        TEXT    NOT NULL DEFAULT 'pool_expense',
+                    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+                    FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
+                    FOREIGN KEY (paid_by) REFERENCES members(id)
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS splits (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    expense_id      INTEGER NOT NULL,
+                    member_id       INTEGER NOT NULL,
+                    amount_consumed REAL    NOT NULL DEFAULT 0,
+                    is_participant  INTEGER NOT NULL DEFAULT 1,
+                    FOREIGN KEY (expense_id) REFERENCES expenses(id) ON DELETE CASCADE,
+                    FOREIGN KEY (member_id) REFERENCES members(id)
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS payments (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    trip_id         INTEGER NOT NULL,
+                    from_member_id  INTEGER NOT NULL,
+                    to_member_id    INTEGER NOT NULL,
+                    amount          REAL    NOT NULL,
+                    settled         INTEGER NOT NULL DEFAULT 0,
+                    created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+                    FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
+                    FOREIGN KEY (from_member_id) REFERENCES members(id),
+                    FOREIGN KEY (to_member_id) REFERENCES members(id)
+                )
+            """)
 
         # Ensure legacy columns
         _ensure_column(conn, "trips", "treasurer_id INTEGER DEFAULT NULL")
@@ -186,8 +297,7 @@ def register_user(username):
         raw_password = ''.join(random.choices(chars, k=6))
         hashed = generate_password_hash(raw_password)
 
-        cur = conn.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, hashed))
-        uid = cur.lastrowid
+        uid = conn.insert_and_get_id("INSERT INTO users (username, password) VALUES (?, ?)", (username, hashed))
         conn.commit()
         return uid, raw_password
     finally:
@@ -210,8 +320,7 @@ def create_trip(name, owner_id=None):
     """Create a new trip and return its id."""
     conn = get_db()
     try:
-        cur = conn.execute("INSERT INTO trips (name, owner_id) VALUES (?, ?)", (name, owner_id))
-        trip_id = cur.lastrowid
+        trip_id = conn.insert_and_get_id("INSERT INTO trips (name, owner_id) VALUES (?, ?)", (name, owner_id))
         conn.commit()
         return trip_id
     finally:
@@ -272,11 +381,10 @@ def add_member(trip_id, name, contribution=0):
     """Add a member to a trip. Returns member id."""
     conn = get_db()
     try:
-        cur = conn.execute(
+        member_id = conn.insert_and_get_id(
             "INSERT INTO members (trip_id, name, initial_contribution) VALUES (?, ?, ?)",
             (trip_id, name, contribution),
         )
-        member_id = cur.lastrowid
         conn.commit()
         return member_id
     finally:
@@ -334,12 +442,11 @@ def add_expense(trip_id, paid_by, amount, title, category="General",
     """
     conn = get_db()
     try:
-        cur = conn.execute(
+        expense_id = conn.insert_and_get_id(
             "INSERT INTO expenses (trip_id, paid_by, amount, title, category, type) "
             "VALUES (?, ?, ?, ?, ?, ?)",
             (trip_id, paid_by, amount, title, category, expense_type),
         )
-        expense_id = cur.lastrowid
 
         if splits is None:
             # Equal split among ALL members

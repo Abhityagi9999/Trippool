@@ -10,3 +10,5 @@ services:
         value: 3.10.8
       - key: RENDER
         value: "true"
+      - key: DATABASE_URL
+        sync: false
