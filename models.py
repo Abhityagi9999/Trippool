@@ -484,17 +484,28 @@ def get_expenses(trip_id):
             "WHERE e.trip_id = ? ORDER BY e.created_at DESC",
             (trip_id,),
         ).fetchall()
+        
+        # O(1) query for all splits for this trip
+        split_rows = conn.execute(
+            "SELECT s.*, m.name AS member_name "
+            "FROM splits s JOIN members m ON s.member_id = m.id "
+            "JOIN expenses e ON s.expense_id = e.id "
+            "WHERE e.trip_id = ?",
+            (trip_id,),
+        ).fetchall()
+
+        splits_by_exp = {}
+        for row in split_rows:
+            sr = dict(row)
+            eid = sr["expense_id"]
+            if eid not in splits_by_exp:
+                splits_by_exp[eid] = []
+            splits_by_exp[eid].append(sr)
+            
         expenses = []
         for r in rows:
             exp = dict(r)
-            # Attach splits
-            split_rows = conn.execute(
-                "SELECT s.*, m.name AS member_name "
-                "FROM splits s JOIN members m ON s.member_id = m.id "
-                "WHERE s.expense_id = ?",
-                (exp["id"],),
-            ).fetchall()
-            exp["splits"] = [dict(sr) for sr in split_rows]
+            exp["splits"] = splits_by_exp.get(exp["id"], [])
             # Find excluded members
             exp["excluded"] = [
                 sr["member_name"] for sr in exp["splits"] if not sr["is_participant"]
@@ -597,23 +608,30 @@ def get_balances(trip_id):
             pool_collected = pool_initial + non_treas_paid
             cash_on_hand = 0
 
+        # Fetch all paid amounts for members of this trip upfront
+        paid_rows = conn.execute(
+            "SELECT paid_by, COALESCE(SUM(amount), 0) FROM expenses WHERE trip_id = ? GROUP BY paid_by",
+            (trip_id,)
+        ).fetchall()
+        paid_map = {r[0]: r[1] for r in paid_rows}
+
+        # Fetch all consumed amounts for members of this trip upfront
+        consumed_rows = conn.execute(
+            "SELECT s.member_id, COALESCE(SUM(s.amount_consumed), 0) "
+            "FROM splits s JOIN expenses e ON s.expense_id = e.id "
+            "WHERE e.trip_id = ? AND s.is_participant = 1 GROUP BY s.member_id",
+            (trip_id,)
+        ).fetchall()
+        consumed_map = {r[0]: r[1] for r in consumed_rows}
+
         balances = {}
         for m in members:
             mid = m["id"]
             name = m["name"]
             contribution = m["initial_contribution"]
 
-            raw_paid = conn.execute(
-                "SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE trip_id = ? AND paid_by = ?",
-                (trip_id, mid),
-            ).fetchone()[0]
-
-            total_consumed = conn.execute(
-                "SELECT COALESCE(SUM(s.amount_consumed), 0) "
-                "FROM splits s JOIN expenses e ON s.expense_id = e.id "
-                "WHERE e.trip_id = ? AND s.member_id = ? AND s.is_participant = 1",
-                (trip_id, mid),
-            ).fetchone()[0]
+            raw_paid = paid_map.get(mid, 0)
+            total_consumed = consumed_map.get(mid, 0)
 
             if mid == treasurer_id:
                 # Treasurer's put_in = initial + personal payments + any pool overflow from pocket
