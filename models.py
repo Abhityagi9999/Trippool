@@ -12,13 +12,24 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 try:
     import psycopg2
+    from psycopg2 import pool
     from psycopg2.extras import DictCursor
 except ImportError:
     psycopg2 = None
+    pool = None
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "trippool_v25.db")
 if os.environ.get('VERCEL') or os.environ.get('RENDER'):
     DB_PATH = "/tmp/trippool_v25.db"
+
+# Global PostgreSQL Connection Pool
+pg_pool = None
+_db_url = os.environ.get("DATABASE_URL")
+if _db_url and _db_url.startswith("postgres") and psycopg2:
+    try:
+        pg_pool = pool.SimpleConnectionPool(1, 20, _db_url, cursor_factory=DictCursor)
+    except Exception as e:
+        print("Failed to initialize PostgreSQL pool:", e)
 
 class DBConnection:
     def __init__(self):
@@ -26,9 +37,10 @@ class DBConnection:
         self.is_pg = bool(self.url and self.url.startswith("postgres"))
         
         if self.is_pg:
-            if not psycopg2:
-                raise Exception("psycopg2 is not installed!")
-            self.conn = psycopg2.connect(self.url, cursor_factory=DictCursor)
+            if not psycopg2 or not pg_pool:
+                raise Exception("psycopg2 is not installed or pool not initialized!")
+            # Get a connection from the pool
+            self.conn = pg_pool.getconn()
         else:
             self.conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
             self.conn.row_factory = sqlite3.Row
@@ -62,7 +74,11 @@ class DBConnection:
         self.conn.commit()
 
     def close(self):
-        self.conn.close()
+        if self.is_pg:
+            if pg_pool:
+                pg_pool.putconn(self.conn)
+        else:
+            self.conn.close()
 
 def get_db():
     return DBConnection()
