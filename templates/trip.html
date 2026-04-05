@@ -294,7 +294,12 @@ async function reload(){try{await Promise.all([fM(),fE(),fB(),fS()]);rOverview()
 
 function fmtTime(dStr){
     if(!dStr)return '';
-    const d=new Date(dStr.replace(' ', 'T')+'Z');
+    let parsedStr = dStr;
+    if(typeof dStr === 'string' && (!dStr.includes('T') && !dStr.includes('Z') && !dStr.includes('GMT') && /^\d{4}-\d{2}-\d{2}/.test(dStr))) {
+        parsedStr = dStr.replace(' ', 'T') + 'Z';
+    }
+    const d=new Date(parsedStr);
+    if(isNaN(d)) return 'Invalid Date';
     return d.toLocaleString('en-US',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit',hour12:true});
 }
 
